@@ -8,7 +8,8 @@ class CourseInstance(BaseModel):
     teacher: str = Field(..., description="教师姓名")
     week: int = Field(..., ge=1, le=30, description="周次")
     day: int = Field(..., ge=1, le=7, description="星期几")
-    periods: str = Field(..., description="节次描述")
+    periods: list[int] = Field(..., description="节次描述")
+    date: str = Field(..., description="上课日期")
     start_time: str = Field(..., description="上课时间")
     end_time: str = Field(..., description="下课时间")
     location: str = Field(..., description="地点")
@@ -19,5 +20,7 @@ class ScheduleSchema(BaseModel):
     """汇总模型：包含所有课程实例和校历基准时间"""
     student_id: str = Field(..., description="学生学号")
     student_name: str = Field(..., description="学生姓名")
+    academic_year: str = Field(..., description="学年")
+    semester: str = Field(..., description="学期")
     week_1_monday: datetime = Field(..., description="第一周周一的日期")
     instances: List[CourseInstance] = Field(..., description="所有的课程列表")

@@ -9,15 +9,14 @@ from app.schemas.schedule_instances import ScheduleSchema, CourseInstance
 # http://jwzx.cqupt.edu.cn/kebiao/kb_stu.php?xh=<学号>
 
 
-def get_period_time(period_str):
+def get_period_time(period):
     start_map = {
         1: "08:00", 2: "08:55", 3: "10:15", 4: "11:10",
         5: "14:00", 6: "14:55", 7: "16:15", 8: "17:10",
         9: "19:00", 10: "19:55", 11: "20:50", 12: "21:45",
     }
     try:
-        nums = re.findall(r'\d+', period_str)
-        s_p, e_p = int(nums[0]), int(nums[-1])
+        s_p, e_p = int(period[0]), int(period[-1])
         start_t = start_map[s_p]
         end_start_t = datetime.strptime(start_map[e_p], "%H:%M")
         end_t = (end_start_t + timedelta(minutes=45)).strftime("%H:%M")
@@ -78,6 +77,11 @@ def parse_jwzx_kebiao(html_content) -> ScheduleSchema:
         assert False, "无法找到头部信息"
 
     head_text = head_text.get_text(separator=' ', strip=True)
+
+    term_match = re.search(r'(\d{4}-\d{4})学年(\d)学期', head_text)
+    academic_year = term_match.group(1) if term_match else "未知学年"
+    semester = term_match.group(2) if term_match else "未知学期"
+
     info = re.search(r'今天是第\s*(\d+)\s*周\s*星期\s*(\d+)', head_text)
     if info:
         curr_w, curr_d = int(info.group(1)), int(info.group(2))
@@ -91,6 +95,9 @@ def parse_jwzx_kebiao(html_content) -> ScheduleSchema:
         student_name = stu_match.group(2) if stu_match else "未知姓名"
     else:
         week_1_monday = datetime(2025, 9, 1)
+
+    week_1_monday = week_1_monday.replace(
+        hour=0, minute=0, second=0, microsecond=0)
 
     schedule_instances = []
 
@@ -110,15 +117,20 @@ def parse_jwzx_kebiao(html_content) -> ScheduleSchema:
                     if len(lines) < 3:
                         continue
 
-                    course_name = lines[1].split('-')[-1]
-                    location = lines[2].replace('地点：', '')
-                    week_str = lines[3]
-                    teacher = lines[4] if len(lines) > 4 else ""
-
                     current_periods = period_name
                     if "3节连上" in div.get_text():
                         start_p = int(re.findall(r'\d+', period_name)[0])
                         current_periods = f"{start_p}-{start_p+2}"
+
+                    if "3节连上" in lines:
+                        lines.remove("3节连上")
+
+                    course_name = lines[1].split('-')[-1]
+                    location = lines[2].replace('地点：', '')
+                    week_str = lines[3]
+                    teacher = lines[4].split(' ')[0] if len(lines) > 4 else ""
+
+                    current_periods = get_period_numbers(current_periods)
 
                     weeks = parse_week_string(week_str)
                     for w in weeks:
@@ -190,6 +202,8 @@ def parse_jwzx_kebiao(html_content) -> ScheduleSchema:
                     op_type == '代课' and sub_teacher) else orig_teacher
                 m_location = tds[9]
 
+                affected_per_str = get_period_numbers(affected_per_str)
+
                 for w in affected_weeks:
                     schedule_instances.append({
                         'course': f"{course_name}",
@@ -200,7 +214,6 @@ def parse_jwzx_kebiao(html_content) -> ScheduleSchema:
                         'location': m_location,
                         'type': op_type,
                     })
-                # print(f"已处理{op_type}：{course_name}")
 
     # 验证并转换每一个课程
     validated_instances = []
@@ -209,6 +222,13 @@ def parse_jwzx_kebiao(html_content) -> ScheduleSchema:
             s_t, e_t = get_period_time(item['periods'])
             item['start_time'] = s_t
             item['end_time'] = e_t
+
+            # 计算该课程具体的日期
+            days_offset = (item['week'] - 1) * 7 + (item['day'] - 1)
+            target_date = week_1_monday + timedelta(days=days_offset)
+            date = target_date.strftime('%Y-%m-%d')
+            item['date'] = date
+
             validated_instances.append(CourseInstance(**item))
         except ValidationError as e:
             print(f"解析条目失败: {e}")
@@ -217,6 +237,8 @@ def parse_jwzx_kebiao(html_content) -> ScheduleSchema:
     return ScheduleSchema(
         student_id=student_id,
         student_name=student_name,
+        academic_year=academic_year,
+        semester=semester,
         week_1_monday=week_1_monday,
         instances=validated_instances
     )

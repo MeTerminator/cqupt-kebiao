@@ -1,40 +1,40 @@
 from typing import Annotated
-from fastapi import APIRouter, HTTPException, Response, Path
+from fastapi import APIRouter, HTTPException, Response, Path, BackgroundTasks
 import httpx
 
-from app.provider.request_jwzx_kebiao import request_jwzx_kebiao
-from app.parser.jwzx_kebiao import parse_jwzx_kebiao
-from app.services.generate_ics import generate_ics
+from app.services.get_curriculum import get_curriculum_data
+from app.provider.generate_ics import generate_ics
+from app.schemas.schedule_instances import ScheduleSchema
 
 router = APIRouter(prefix="/api/curriculum")
 
 
-@router.get("/{student_id}/schedule.ics")
-async def get_schedule(
-    student_id: Annotated[
-        str,
-        Path(
-            description="学生学号，必须为10位数字",
-            pattern=r"^\d{10}$"
-        )
-    ]
+@router.get("/{student_id}/curriculum.ics")
+async def get_curriculum_ics(
+    student_id: Annotated[str, Path(pattern=r"^\d{10}$")],
+    background_tasks: BackgroundTasks
 ):
     try:
-        jwzx_html = await request_jwzx_kebiao(student_id)
-        schedule_data = parse_jwzx_kebiao(jwzx_html)
-        ics_text = generate_ics(schedule_data)
+        data = await get_curriculum_data(student_id, background_tasks)
+        if not data:
+            raise HTTPException(status_code=404, detail="学生不存在")
 
+        ics_text = generate_ics(data)
         return Response(
             content=ics_text,
             media_type="text/calendar",
-            headers={
-                "Content-Disposition": f"attachment; filename=schedule.ics",
-                "Cache-Control": "no-cache"
-            }
+            headers={"Content-Disposition": f"attachment; filename=schedule.ics"}
         )
-    except httpx.ReadTimeout:
-        raise HTTPException(
-            status_code=500, detail="教务在线请求超时")
-    except httpx.HTTPStatusError:
-        raise HTTPException(
-            status_code=500, detail="教务在线请求失败")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="教务在线请求失败")
+
+
+@router.get("/{student_id}/curriculum.json", response_model=ScheduleSchema)
+async def get_curriculum_json(
+    student_id: Annotated[str, Path(pattern=r"^\d{10}$")],
+    background_tasks: BackgroundTasks
+):
+    data = await get_curriculum_data(student_id, background_tasks)
+    if not data:
+        raise HTTPException(status_code=404, detail="学生不存在")
+    return data

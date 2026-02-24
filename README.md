@@ -8,9 +8,13 @@
 - 支持 __调停课__ 合并主课表
 - 自动计算学期开始日期
 - 数据来源于教务在线
+- 基于 redis 缓存课表数据
 
 ## API
 
-- GET /api/curriculum/<学号>/schedule.ics
+- GET /api/curriculum/<学号>/curriculum.ics
   - 返回指定学号的课表 iCalendar 文件
+
+- GET /api/curriculum/<学号>/curriculum.json
+  - 返回指定学号的 json 格式课表数据
 
