@@ -4,6 +4,8 @@ from bs4 import BeautifulSoup
 from pydantic import ValidationError
 
 from app.schemas.schedule_instances import ScheduleSchema, CourseInstance
+from app.exceptions.JwzxError import JwzxError
+
 
 # 课表 HTML 来源
 # http://jwzx.cqupt.edu.cn/kebiao/kb_stu.php?xh=<学号>
@@ -74,7 +76,8 @@ def parse_jwzx_kebiao(html_content) -> ScheduleSchema:
     # --- 1. 动态推算第一周周一 ---
     head_text = soup.find('div', id='head')
     if not head_text:
-        assert False, "无法找到头部信息"
+        # 教务在线晚上无法正常返回信息
+        raise JwzxError("教务在线数据获取失败，请在白天重试。")
 
     head_text = head_text.get_text(separator=' ', strip=True)
 
