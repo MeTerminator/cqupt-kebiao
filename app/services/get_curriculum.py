@@ -35,6 +35,7 @@ async def get_curriculum_data(student_id: str, background_tasks: BackgroundTasks
 
     # 2. 存在缓存的情况 (Stale-While-Revalidate)
     if cached_html and last_update_ts:
+        last_update_ts = float(last_update_ts)
         last_update_dt = datetime.fromtimestamp(float(last_update_ts))
         if (now_ts - last_update_ts) > 5:
             # 超过 5s，触发后台异步刷新

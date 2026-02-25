@@ -165,6 +165,9 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
             course_name = tds[4]
             orig_teacher = tds[5]
 
+            # 用于保存被代课替换掉的原课程地点
+            original_location = None
+
             # 无论什么类型，先解析出受影响的时间范围
             if op_type == '停课':
                 affected_weeks = parse_week_string(tds[6])
@@ -177,40 +180,47 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
             if not affected_day or not affected_per_str:
                 continue
 
-            # 将节次转为数字列表，例如 [5, 6]
             affected_periods = get_period_numbers(affected_per_str)
 
-            # --- 去重：删除原课表中所有在受影响时间内、且课程名匹配(或时间重合)的课 ---
+            # --- 去重并捕获地点 ---
             new_schedule = []
             for inst in schedule_instances:
                 inst_periods = get_period_numbers(inst['periods'])
 
-                # 周次相同 且 星期相同 且 节次有重叠
+                # 检查时间是否重合
                 is_same_time = (inst['week'] in affected_weeks and
                                 inst['day'] == affected_day and
                                 any(p in inst_periods for p in affected_periods))
 
-                # 如果是停课，匹配课程名和时间则删除
-                if op_type == '停课':
-                    if is_same_time and (course_name in inst['course']):
-                        continue
-                # 如果是代课/补课，只要时间冲突，就必须删除旧课，腾出位置
-                elif op_type in ('代课', '补课'):
-                    if is_same_time:
+                # 如果时间冲突
+                if is_same_time:
+                    # 如果是代课，且找到了原课程，记录下它的地点
+                    if op_type == '代课' and (course_name in inst['course']):
+                        original_location = inst['location']
+
+                    # 确定要删除/替换该项
+                    if op_type == '停课':
+                        if course_name in inst['course']:
+                            continue
+                    elif op_type in ('代课', '补课'):
                         continue
 
                 new_schedule.append(inst)
 
             schedule_instances = new_schedule
 
-            # --- 添加新日程 (针对补课和代课) ---
+            # --- 添加新日程 ---
             if op_type in ('补课', '代课'):
                 sub_teacher = tds[10]
                 final_teacher = sub_teacher if (
                     op_type == '代课' and sub_teacher) else orig_teacher
-                m_location = tds[9]
 
-                affected_per_str = get_period_numbers(affected_per_str)
+                # 如果是代课且我们抓到了原地点，就用原地点；否则用调停课表里的地点
+                m_location = tds[9]
+                if op_type == '代课' and original_location:
+                    m_location = original_location
+
+                affected_per_str_nums = get_period_numbers(affected_per_str)
 
                 for w in affected_weeks:
                     schedule_instances.append({
@@ -218,7 +228,7 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
                         'teacher': final_teacher,
                         'week': w,
                         'day': affected_day,
-                        'periods': affected_per_str,
+                        'periods': affected_per_str_nums,
                         'location': m_location,
                         'type': op_type,
                     })
