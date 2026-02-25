@@ -2,6 +2,7 @@ import re
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from pydantic import ValidationError
+from typing import Optional
 
 from app.schemas.schedule_instances import ScheduleSchema, CourseInstance
 from app.exceptions.JwzxError import JwzxError
@@ -70,8 +71,12 @@ def get_period_numbers(period_str):
     return [int(n) for n in nums]
 
 
-def parse_jwzx_kebiao(html_content) -> ScheduleSchema:
+def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> ScheduleSchema:
     soup = BeautifulSoup(html_content, 'html.parser')
+
+    # 如果没传入时间（比如单测时），则使用当前时间
+    if request_at is None:
+        request_at = datetime.now()
 
     # --- 1. 动态推算第一周周一 ---
     head_text = soup.find('div', id='head')
@@ -88,9 +93,9 @@ def parse_jwzx_kebiao(html_content) -> ScheduleSchema:
     info = re.search(r'今天是第\s*(\d+)\s*周\s*星期\s*(\d+)', head_text)
     if info:
         curr_w, curr_d = int(info.group(1)), int(info.group(2))
-        today = datetime.now()
-        week_1_monday = today - \
-            timedelta(days=today.weekday()) - timedelta(weeks=(curr_w - 1))
+        week_1_monday = request_at - \
+            timedelta(days=request_at.weekday()) - \
+            timedelta(weeks=(curr_w - 1))
 
         # 提取学号姓名
         stu_match = re.search(r'(\d{10})([\u4e00-\u9fa5]+)', head_text)
