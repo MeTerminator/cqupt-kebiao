@@ -195,7 +195,8 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
                 # 如果时间冲突
                 if is_same_time:
                     # 如果是代课，且找到了原课程，记录下它的地点
-                    if op_type == '代课' and (course_name in inst['course']):
+                    # 此处不需要判断是否是同一门课，如原课程为 体育1（上）羽毛球1班，代课课程可能为 大学体育1（上）
+                    if op_type == '代课':  # and (course_name in inst['course']):
                         original_location = inst['location']
 
                     # 确定要删除/替换该项
