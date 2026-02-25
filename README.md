@@ -18,3 +18,5 @@
 - GET /api/curriculum/<学号>/curriculum.json
   - 返回指定学号的 json 格式课表数据
 
+- GET /api/curriculum/<学号>/overview
+  - 返回指定学号的课程总览数据

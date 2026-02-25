@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Response, Path, BackgroundTasks
 import httpx
 
 from app.services.get_curriculum import get_curriculum_data
+from app.services.get_overview import get_schedule_overview
 from app.provider.generate_ics import generate_ics
 from app.schemas.schedule_instances import ScheduleSchema
 from app.exceptions.JwzxError import JwzxError
@@ -45,3 +46,22 @@ async def get_curriculum_json(
         return data
     except JwzxError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.get("/{student_id}/overview")
+async def get_curriculum_overview(
+    student_id: Annotated[str, Path(pattern=r"^\d{10}$")],
+    background_tasks: BackgroundTasks
+):
+    try:
+        data = await get_curriculum_data(student_id, background_tasks)
+        if not data:
+            raise HTTPException(status_code=404, detail="学生不存在")
+
+        overview = get_schedule_overview(data)
+        return overview
+
+    except JwzxError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"内部错误: {str(e)}")
