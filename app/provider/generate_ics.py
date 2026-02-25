@@ -1,10 +1,10 @@
-from datetime import timedelta
+from typing import List, Optional
 from app.schemas.schedule_instances import ScheduleSchema
 
 
-def generate_ics(data: ScheduleSchema) -> str:
+def generate_ics(data: ScheduleSchema, alarms: List[int]) -> str:
     """
-    传入 ScheduleSchema 模型，返回 ICS 字符串内容
+    alarms: 包含提醒分钟数的列表，例如 [30, 10]
     """
     ics_lines = [
         "BEGIN:VCALENDAR",
@@ -15,12 +15,8 @@ def generate_ics(data: ScheduleSchema) -> str:
     ]
 
     for idx, ev in enumerate(data.instances):
-
-        # 获取起止时间
         s_t, e_t = ev.start_time, ev.end_time
-
         class_name = ev.course if ev.type == "常规" else f"{ev.course} ({ev.type})"
-
         date = ev.date.replace('-', '')
 
         ics_lines.extend([
@@ -31,8 +27,19 @@ def generate_ics(data: ScheduleSchema) -> str:
             f"SUMMARY:{class_name}",
             f"LOCATION:{ev.location} {ev.teacher}",
             f"DESCRIPTION:地点：{ev.location}\\n教师: {ev.teacher}\\n类型: {ev.type}\\n节次: {ev.periods}",
-            "END:VEVENT"
         ])
+
+        # 动态添加提醒
+        for minutes in alarms:
+            ics_lines.extend([
+                "BEGIN:VALARM",
+                "ACTION:DISPLAY",
+                f"DESCRIPTION:{class_name} @ {ev.location}",
+                f"TRIGGER:-PT{minutes}M",
+                "END:VALARM"
+            ])
+
+        ics_lines.append("END:VEVENT")
 
     ics_lines.append("END:VCALENDAR")
     return "\n".join(ics_lines)
