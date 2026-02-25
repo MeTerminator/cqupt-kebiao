@@ -126,12 +126,20 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
                         continue
 
                     current_periods = period_name
+
                     if "3节连上" in div.get_text():
                         start_p = int(re.findall(r'\d+', period_name)[0])
                         current_periods = f"{start_p}-{start_p+2}"
 
+                    if "4节连上" in div.get_text():
+                        start_p = int(re.findall(r'\d+', period_name)[0])
+                        current_periods = f"{start_p}-{start_p+3}"
+
                     if "3节连上" in lines:
                         lines.remove("3节连上")
+
+                    if "4节连上" in lines:
+                        lines.remove("4节连上")
 
                     course_name = lines[1].split('-')[-1]
                     location = lines[2].replace('地点：', '')
