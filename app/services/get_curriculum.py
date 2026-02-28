@@ -54,38 +54,61 @@ async def update_cache(student_id: str):
 
 
 def parse_all_data(request_at: datetime, kb_html: str, ks_html: str, bk_html: str) -> Optional[ScheduleSchema]:
-    """解析课表、考试、补考数据"""
-    # 解析课表数据
+    """解析课表、考试、补考数据并进行合并、冲突处理与排序"""
+
+    # 1. 解析课表基础数据
     try:
         curriculum_data = parse_jwzx_kebiao(kb_html, request_at=request_at)
     except JwzxError:
         return None
 
+    # 2. 解析普通考试和补考数据
+    # 假设 parse_jwzx_ksap 返回 (exams: list[ExamInstance], year: str, term: str)
     exam_data, exam_academic_year, exam_semester = parse_jwzx_ksap(ks_html)
-    exam_bk_data = parse_jwzx_ksapBk(bk_html)
+    exam_bk_data = parse_jwzx_ksapBk(bk_html)  # 补考数据，type通常已在解析时设为"补考"
 
+    # 3. 统一处理考试列表
+    all_exam_instances = []
+
+    # 策略：普通考试受学年学期限制，补考不受限制（补考通常是考上学期的课）
+    # 先处理普通考试
+    if exam_academic_year == curriculum_data.academic_year and exam_semester == curriculum_data.semester:
+        all_exam_instances.extend(exam_data)
+
+    # 始终添加补考数据
     if exam_bk_data:
-        exam_data.extend(exam_bk_data)
+        all_exam_instances.extend(exam_bk_data)
 
-    # 给考试科目找一个老师
-    for exam in exam_data:
-        if exam.teacher is None:
+    # 4. 补全老师信息（尝试从课表中匹配同名课程的老师）
+    for exam in all_exam_instances:
+        if not exam.teacher:
             for course in curriculum_data.instances:
-                if exam.course in course.course:
+                # 模糊匹配：考试名在课程名中或反之
+                if exam.course in course.course or course.course in exam.course:
                     exam.teacher = course.teacher
                     break
+            # 如果还是没找到，设为未知
+            if not exam.teacher:
+                exam.teacher = "未知教师"
 
+    # 5. 将 ExamInstance 转换为 CourseInstance 统一模型
+    # 假设 exams_to_course 会处理 date, start_time, end_time 等转换
     week_1_monday = curriculum_data.week_1_monday
-    exam_data_parsed = exams_to_course(exam_data, week_1_monday)
+    exam_courses = exams_to_course(all_exam_instances, week_1_monday)
 
-    # 如果学期和考试学年不一致，则不显示考试数据
-    if exam_academic_year == curriculum_data.academic_year and exam_semester == curriculum_data.semester:
-        curriculum_data.instances.extend(exam_data_parsed)
+    # 6. 处理补考/异常考试的周次
+    # 补考可能没有 week，为了排序和模型校验，统一设为 0 或计算出的实际周次
+    for ec in exam_courses:
+        if ec.week is None:
+            ec.week = 0
 
-    # 合并冲突课程
+    # 7. 合并到主课表实例中
+    curriculum_data.instances.extend(exam_courses)
+
+    # 8. 处理冲突课程（按照你要求的 #1, #2 格式合并 description）
     curriculum_data = resolve_schedule_conflicts(curriculum_data)
 
-    # 排序
+    # 9. 全局排序（按照日期和起始时间从近到远）
     curriculum_data = sort_schedule_by_time(curriculum_data)
 
     return curriculum_data
