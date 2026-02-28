@@ -31,6 +31,10 @@ def generate_ics(data: ScheduleSchema, alarms: List[int]) -> str:
             ics_line.append(f"LOCATION:{ev.location}")
             ics_line.append(
                 f"DESCRIPTION:地点：{ev.location.split(' ')[0]}\\n座位号: {ev.location.split(' ')[1]}\\n教师: {ev.teacher}\\n类型: {ev.type}\\n节次: {ev.periods}")
+        elif ev.type == "冲突":
+            ics_line.append(f"LOCATION:{ev.location}")
+            ics_line.append(
+                f"DESCRIPTION:{ev.description}")
         else:
             ics_line.append(f"LOCATION:{ev.location} {ev.teacher}")
             ics_line.append(

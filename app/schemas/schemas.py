@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 
 class ExamInstance(BaseModel):
@@ -27,6 +27,8 @@ class CourseInstance(BaseModel):
     start_time: str = Field(..., description="上课时间")
     end_time: str = Field(..., description="下课时间")
     location: str = Field(..., description="地点")
+    description: str | None = Field(None, description="描述")
+    conflicts: Optional[List] = Field(None, description="冲突课程")
     type: str = Field(default="常规", description="课程类型")
 
 

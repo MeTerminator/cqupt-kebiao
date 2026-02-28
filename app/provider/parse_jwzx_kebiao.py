@@ -14,18 +14,27 @@ from app.exceptions.JwzxError import JwzxError
 
 
 def get_period_time(start_period, end_period):
-    """根据起始节数和结束节数，返回起始时间和结束时间"""
+    """根据起始节数和结束节数，计算起始和结束时间（每节45min，课间统一10min）"""
+    # 每一节课对应的标准起始时间
     start_map = {
         1: "08:00", 2: "08:55", 3: "10:15", 4: "11:10",
         5: "14:00", 6: "14:55", 7: "16:15", 8: "17:10",
         9: "19:00", 10: "19:55", 11: "20:50", 12: "21:45",
     }
     try:
-        start_t = start_map[start_period]
-        end_start_t = datetime.strptime(start_map[end_period], "%H:%M")
-        end_t = (end_start_t + timedelta(minutes=45)).strftime("%H:%M")
-        return start_t, end_t
-    except:
+        start_str = start_map[start_period]
+        # 计算总节数 (例如 1-3 节就是 3 节)
+        count = end_period - start_period + 1
+
+        # 计算总时长：每节 45 分钟 + 中间 (count-1) 个 10 分钟课间
+        total_minutes = (count * 45) + ((count - 1) * 10)
+
+        start_dt = datetime.strptime(start_str, "%H:%M")
+        end_dt = start_dt + timedelta(minutes=total_minutes)
+
+        return start_str, end_dt.strftime("%H:%M")
+    except Exception:
+        # 容错处理
         return "08:00", "08:45"
 
 
@@ -142,7 +151,7 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
                     if "4节连上" in lines:
                         lines.remove("4节连上")
 
-                    course_name = lines[1].split('-')[-1]
+                    course_name = lines[1].split('-', 1)[-1]
                     location = lines[2].replace('地点：', '')
                     week_str = lines[3]
                     teacher = lines[4].split(' ')[0] if len(lines) > 4 else ""

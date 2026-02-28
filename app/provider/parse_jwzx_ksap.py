@@ -2,6 +2,7 @@ import re
 from datetime import datetime
 from bs4 import BeautifulSoup
 from app.schemas.schemas import ExamInstance
+from app.exceptions.JwzxError import JwzxError
 
 # 时间段到节次的映射表
 TIME_TO_PERIODS = {
@@ -32,16 +33,28 @@ def _parse_time_info(time_str: str):
     return periods, start_time, end_time
 
 
-def parse_jwzx_ksap(html: str) -> list[ExamInstance]:
+def parse_jwzx_ksap(html: str) -> tuple[list[ExamInstance], str, str]:
     """解析普通考试安排"""
     soup = BeautifulSoup(html, "html.parser")
     exams = []
+
+    head_text = soup.find('div', id='head')
+    if not head_text:
+        # 教务在线晚上无法正常返回信息
+        raise JwzxError("教务在线数据获取失败，请在白天重试。")
+
+    head_text = head_text.get_text(separator=' ', strip=True)
+
+    term_match = re.search(r'(\d{4}-\d{4})学年(\d)学期', head_text)
+    academic_year = term_match.group(1) if term_match else "未知学年"
+    semester = term_match.group(2) if term_match else "未知学期"
+
     table = soup.find("table")
     if not table:
-        return []
+        return [], academic_year, semester
     tbody = table.find("tbody")
     if not tbody:
-        return []
+        return [], academic_year, semester
 
     for row in tbody.find_all("tr"):
         cols = [ele.text.strip() for ele in row.find_all("td")]
@@ -68,7 +81,7 @@ def parse_jwzx_ksap(html: str) -> list[ExamInstance]:
             seat=cols[10],
             type=cols[3]
         ))
-    return exams
+    return exams, academic_year, semester
 
 
 def parse_jwzx_ksapBk(html: str) -> list[ExamInstance]:

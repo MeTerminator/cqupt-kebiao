@@ -1,14 +1,14 @@
 import asyncio
 from datetime import datetime
-from typing import Optional, List, Tuple
+from typing import Optional, Tuple
 from fastapi import BackgroundTasks
 
 from app.core.redis import redis_client
 from app.provider.request_jwzx import request_jwzx_kebiao, request_jwzx_ksap, request_jwzx_ksapBk
 from app.provider.parse_jwzx_kebiao import parse_jwzx_kebiao
 from app.provider.parse_jwzx_ksap import parse_jwzx_ksap, parse_jwzx_ksapBk
-from app.provider.utils import exams_to_course
-from app.schemas.schemas import ExamInstance, ScheduleSchema
+from app.provider.utils import exams_to_course, resolve_schedule_conflicts, sort_schedule_by_time
+from app.schemas.schemas import ScheduleSchema
 from app.exceptions.JwzxError import JwzxError
 from app.schemas.schemas import ScheduleSchema
 
@@ -61,8 +61,12 @@ def parse_all_data(request_at: datetime, kb_html: str, ks_html: str, bk_html: st
     except JwzxError:
         return None
 
-    exam_data: list[ExamInstance] = parse_jwzx_ksap(
-        ks_html) + parse_jwzx_ksapBk(bk_html)
+    exam_data, exam_academic_year, exam_semester = parse_jwzx_ksap(ks_html)
+    exam_bk_data = parse_jwzx_ksapBk(bk_html)
+
+    if exam_bk_data:
+        exam_data.extend(exam_bk_data)
+
     # 给考试科目找一个老师
     for exam in exam_data:
         if exam.teacher is None:
@@ -74,7 +78,15 @@ def parse_all_data(request_at: datetime, kb_html: str, ks_html: str, bk_html: st
     week_1_monday = curriculum_data.week_1_monday
     exam_data_parsed = exams_to_course(exam_data, week_1_monday)
 
-    curriculum_data.instances.extend(exam_data_parsed)
+    # 如果学期和考试学年不一致，则不显示考试数据
+    if exam_academic_year == curriculum_data.academic_year and exam_semester == curriculum_data.semester:
+        curriculum_data.instances.extend(exam_data_parsed)
+
+    # 合并冲突课程
+    curriculum_data = resolve_schedule_conflicts(curriculum_data)
+
+    # 排序
+    curriculum_data = sort_schedule_by_time(curriculum_data)
 
     return curriculum_data
 
