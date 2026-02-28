@@ -57,6 +57,7 @@ def parse_jwzx_ksap(html: str) -> list[ExamInstance]:
 
         exams.append(ExamInstance(
             course=cols[5],
+            teacher=None,
             week=week_val,
             day=int(cols[7]) if cols[7].isdigit() else None,
             periods=periods,
@@ -107,6 +108,7 @@ def parse_jwzx_ksapBk(html: str) -> list[ExamInstance]:
 
         exams.append(ExamInstance(
             course=course_name,
+            teacher=None,
             week=None,
             day=exam_day,
             periods=periods,

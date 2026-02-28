@@ -5,6 +5,7 @@ from typing import List
 
 class ExamInstance(BaseModel):
     course: str = Field(..., description="课程名称")
+    teacher: str | None = Field(None, description="教师姓名")
     week: int | None = Field(None, ge=1, le=30, description="周次")
     day: int | None = Field(None, ge=1, le=7, description="星期几")
     periods: list[int] = Field(..., description="节次描述")
