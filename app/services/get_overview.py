@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import List, Dict, Any
-from app.schemas.schedule_instances import ScheduleSchema
+from typing import Dict, Any
+from app.schemas.schemas import ScheduleSchema
 
 
 def get_schedule_overview(data: ScheduleSchema) -> Dict[str, Any]:

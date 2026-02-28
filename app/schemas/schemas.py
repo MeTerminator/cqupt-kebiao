@@ -3,11 +3,24 @@ from datetime import datetime
 from typing import List
 
 
+class ExamInstance(BaseModel):
+    course: str = Field(..., description="课程名称")
+    week: int | None = Field(None, ge=1, le=30, description="周次")
+    day: int | None = Field(None, ge=1, le=7, description="星期几")
+    periods: list[int] = Field(..., description="节次描述")
+    date: str | None = Field(None, description="考试日期")
+    start_time: str = Field(..., description="开始时间")
+    end_time: str = Field(..., description="结束时间")
+    location: str = Field(..., description="考试地点")
+    seat: str = Field(..., description="考试座位")
+    type: str = Field(..., description="考试类型")
+
+
 class CourseInstance(BaseModel):
     course: str = Field(..., description="课程名称")
     teacher: str = Field(..., description="教师姓名")
-    week: int = Field(..., ge=1, le=30, description="周次")
-    day: int = Field(..., ge=1, le=7, description="星期几")
+    week: int | None = Field(..., ge=1, le=30, description="周次")
+    day: int | None = Field(..., ge=1, le=7, description="星期几")
     periods: list[int] = Field(..., description="节次描述")
     date: str = Field(..., description="上课日期")
     start_time: str = Field(..., description="上课时间")

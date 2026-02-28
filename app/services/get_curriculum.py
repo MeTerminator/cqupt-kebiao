@@ -1,65 +1,124 @@
+import asyncio
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Tuple
 from fastapi import BackgroundTasks
 
 from app.core.redis import redis_client
-from app.provider.request_jwzx_kebiao import request_jwzx_kebiao
+from app.provider.request_jwzx import request_jwzx_kebiao, request_jwzx_ksap, request_jwzx_ksapBk
 from app.provider.parse_jwzx_kebiao import parse_jwzx_kebiao
-from app.schemas.schedule_instances import ScheduleSchema
+from app.provider.parse_jwzx_ksap import parse_jwzx_ksap, parse_jwzx_ksapBk
+from app.provider.utils import exams_to_course
+from app.schemas.schemas import ExamInstance, ScheduleSchema
+from app.exceptions.JwzxError import JwzxError
+from app.schemas.schemas import ScheduleSchema
+
+# 定义常量方便维护
+CACHE_KEYS = ["kebiao_html", "ksap_html", "ksapbk_html"]
+TS_KEYS = [f"{k}_ts" for k in CACHE_KEYS]
 
 
-async def update_cache(student_id: str):
-    """后台更新缓存的任务"""
-    try:
-        html = await request_jwzx_kebiao(student_id)
-        now_dt = datetime.now()
-        schedule_data = parse_jwzx_kebiao(html, request_at=now_dt)
-        if schedule_data.student_id == student_id:
-            # 使用 pipeline 可以一次性发送多个命令，稍微提升效率
-            async with redis_client.pipeline(transaction=True) as pipe:
-                # 每一行都在往缓冲区填命令，但不 await 它们
-                pipe.set(f"kebiao_html:{student_id}", html, ex=3600)
-                pipe.set(f"kebiao_html_ts:{student_id}",
-                         now_dt.timestamp())
-                await pipe.execute()
-    except Exception:
-        pass  # 满足“请求失败不重试”
-
-
-async def get_curriculum_data(student_id: str, background_tasks: BackgroundTasks) -> Optional[ScheduleSchema]:
-    # 1. 尝试从 Redis 获取缓存
-    cached_html = await redis_client.get(f"kebiao_html:{student_id}")
-    last_update_ts = await redis_client.get(f"kebiao_html_ts:{student_id}")
+async def _request_and_cache(student_id: str) -> Tuple[str, str, str]:
+    """并发请求三个接口并统一写入缓存"""
+    # 并发请求，节省等待时间
+    kebiao_html, ksap_html, ksapbk_html = await asyncio.gather(
+        request_jwzx_kebiao(student_id),
+        request_jwzx_ksap(student_id),
+        request_jwzx_ksapBk(student_id)
+    )
 
     now_ts = datetime.now().timestamp()
 
-    # 2. 存在缓存的情况 (Stale-While-Revalidate)
-    if cached_html and last_update_ts:
-        last_update_ts = float(last_update_ts)
-        last_update_dt = datetime.fromtimestamp(float(last_update_ts))
-        if (now_ts - last_update_ts) > 5:
-            # 超过 5s，触发后台异步刷新
+    # 统一使用一个 pipeline 写入所有数据
+    async with redis_client.pipeline(transaction=True) as pipe:
+        data_map = {
+            f"kebiao_html:{student_id}": kebiao_html,
+            f"ksap_html:{student_id}": ksap_html,
+            f"ksapbk_html:{student_id}": ksapbk_html,
+            f"kebiao_html_ts:{student_id}": now_ts,
+            f"ksap_html_ts:{student_id}": now_ts,
+            f"ksapbk_html_ts:{student_id}": now_ts,
+        }
+        for key, val in data_map.items():
+            pipe.set(key, val, ex=3600)
+        await pipe.execute()
+
+    return kebiao_html, ksap_html, ksapbk_html
+
+
+async def update_cache(student_id: str):
+    """静默更新"""
+    try:
+        await _request_and_cache(student_id)
+    except Exception:
+        pass
+
+
+def parse_all_data(request_at: datetime, kb_html: str, ks_html: str, bk_html: str) -> Optional[ScheduleSchema]:
+    """解析课表、考试、补考数据"""
+    # 解析课表数据
+    try:
+        curriculum_data = parse_jwzx_kebiao(kb_html, request_at=request_at)
+    except JwzxError:
+        return None
+
+    exam_data: list[ExamInstance] = parse_jwzx_ksap(
+        ks_html) + parse_jwzx_ksapBk(bk_html)
+    # 给考试科目找一个老师
+    for exam in exam_data:
+        if exam.teacher is None:
+            for course in curriculum_data.instances:
+                if exam.course in course.course:
+                    exam.teacher = course.teacher
+                    break
+
+    week_1_monday = curriculum_data.week_1_monday
+    exam_data_parsed = exams_to_course(exam_data, week_1_monday)
+
+    curriculum_data.instances.extend(exam_data_parsed)
+
+    return curriculum_data
+
+
+async def get_curriculum_data(student_id: str, background_tasks: BackgroundTasks) -> Optional[ScheduleSchema]:
+    # 1. 构造 Redis Key 列表
+    all_keys = [f"{k}:{student_id}" for k in CACHE_KEYS + TS_KEYS]
+
+    # 2. 使用 mget 一次性获取所有缓存数据 (顺序: 课表, 考试, 补考, 课表TS, 考试TS, 补考TS)
+    values = await redis_client.mget(*all_keys)
+
+    kb_html, ks_html, bk_html = values[0:3]
+    ts_values = values[3:6]
+
+    now_ts = datetime.now().timestamp()
+
+    # 3. 检查缓存完整性
+    if all(values[:3]):  # 如果三个 HTML 都有缓存
+        # 4. 检查是否有任意一个超过 5s
+        try:
+            # 只要有一个时间戳不存在，或者当前时间减去任意一个时间戳 > 5
+            needs_update = False
+            if not all(ts_values):
+                needs_update = True
+            else:
+                # 任意一个超过 5s 即为 True
+                needs_update = any((now_ts - float(ts)) >
+                                   5 for ts in ts_values)
+
+            if needs_update:
+                background_tasks.add_task(update_cache, student_id)
+        except (ValueError, TypeError):
             background_tasks.add_task(update_cache, student_id)
 
-        # 无论是否过期，都先返回旧数据
-        return parse_jwzx_kebiao(cached_html, request_at=last_update_dt)
+        # 解析并返回（这里 request_at 取课表的时间戳作为代表）
+        ref_dt = datetime.fromtimestamp(
+            float(ts_values[0])) if ts_values[0] else datetime.now()
 
-    # 3. 无缓存情况：阻塞请求
+        return parse_all_data(ref_dt, kb_html, ks_html, bk_html)
+
+    # 5. 无完整缓存：阻塞请求
     try:
-        html = await request_jwzx_kebiao(student_id)
-        now_dt = datetime.now()
-        schedule_data = parse_jwzx_kebiao(html, request_at=now_dt)
-
-        if schedule_data.student_id != student_id:
-            return None
-
-        # 首次拉取成功，写入缓存
-        async with redis_client.pipeline(transaction=True) as pipe:
-            pipe.set(f"kebiao_html:{student_id}", html, ex=3600)
-            pipe.set(f"kebiao_html_ts:{student_id}",
-                     now_dt.timestamp())
-            await pipe.execute()
-        return schedule_data
+        kb_html, ks_html, bk_html = await _request_and_cache(student_id)
+        # 阻塞请求返回最新解析结果
+        return parse_all_data(datetime.now(), kb_html, ks_html, bk_html)
     except Exception:
-        # 如果教务在线挂了且没缓存，抛出异常让上层捕获
         raise

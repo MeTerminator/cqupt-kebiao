@@ -5,7 +5,7 @@ import httpx
 from app.services.get_curriculum import get_curriculum_data
 from app.services.get_overview import get_schedule_overview
 from app.provider.generate_ics import generate_ics
-from app.schemas.schedule_instances import ScheduleSchema
+from app.schemas.schemas import ScheduleSchema
 from app.exceptions.JwzxError import JwzxError
 
 

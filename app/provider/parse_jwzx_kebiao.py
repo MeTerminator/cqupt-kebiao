@@ -4,7 +4,8 @@ from bs4 import BeautifulSoup
 from pydantic import ValidationError
 from typing import Optional
 
-from app.schemas.schedule_instances import ScheduleSchema, CourseInstance
+from app.schemas.schemas import ScheduleSchema, CourseInstance
+from app.provider.utils import weekday_to_date
 from app.exceptions.JwzxError import JwzxError
 
 
@@ -12,16 +13,16 @@ from app.exceptions.JwzxError import JwzxError
 # http://jwzx.cqupt.edu.cn/kebiao/kb_stu.php?xh=<学号>
 
 
-def get_period_time(period):
+def get_period_time(start_period, end_period):
+    """根据起始节数和结束节数，返回起始时间和结束时间"""
     start_map = {
         1: "08:00", 2: "08:55", 3: "10:15", 4: "11:10",
         5: "14:00", 6: "14:55", 7: "16:15", 8: "17:10",
         9: "19:00", 10: "19:55", 11: "20:50", 12: "21:45",
     }
     try:
-        s_p, e_p = int(period[0]), int(period[-1])
-        start_t = start_map[s_p]
-        end_start_t = datetime.strptime(start_map[e_p], "%H:%M")
+        start_t = start_map[start_period]
+        end_start_t = datetime.strptime(start_map[end_period], "%H:%M")
         end_t = (end_start_t + timedelta(minutes=45)).strftime("%H:%M")
         return start_t, end_t
     except:
@@ -246,15 +247,13 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
     validated_instances = []
     for item in schedule_instances:
         try:
-            s_t, e_t = get_period_time(item['periods'])
+            s_t, e_t = get_period_time(item['periods'][0], item['periods'][-1])
             item['start_time'] = s_t
             item['end_time'] = e_t
 
             # 计算该课程具体的日期
-            days_offset = (item['week'] - 1) * 7 + (item['day'] - 1)
-            target_date = week_1_monday + timedelta(days=days_offset)
-            date = target_date.strftime('%Y-%m-%d')
-            item['date'] = date
+            item['date'] = weekday_to_date(
+                item['week'], item['day'], week_1_monday)
 
             validated_instances.append(CourseInstance(**item))
         except ValidationError as e:
