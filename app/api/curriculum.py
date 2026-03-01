@@ -14,11 +14,13 @@ router = APIRouter(prefix="/api/curriculum")
 
 @router.get("/{student_id}/curriculum.ics")
 async def get_curriculum_ics(
-    student_id: Annotated[str, Path(pattern=r"^\d{10}$")],
+    student_id: Annotated[str, Path(pattern=r"^[lL\d]\d{9}$")],
     background_tasks: BackgroundTasks,
     first: Optional[int] = Query(None, description="第一优先级提醒时间（分钟）"),
     second: Optional[int] = Query(None, description="第二优先级提醒时间（分钟）")
 ):
+    student_id = student_id.upper()
+
     # 校验逻辑：first 必须比 second 大
     if first is not None and second is not None:
         if first <= second:
@@ -54,9 +56,11 @@ async def get_curriculum_ics(
 
 @router.get("/{student_id}/curriculum.json", response_model=ScheduleSchema)
 async def get_curriculum_json(
-    student_id: Annotated[str, Path(pattern=r"^\d{10}$")],
+    student_id: Annotated[str, Path(pattern=r"^[lL\d]\d{9}$")],
     background_tasks: BackgroundTasks
 ):
+    student_id = student_id.upper()
+
     try:
         data = await get_curriculum_data(student_id, background_tasks)
         if not data:
@@ -68,9 +72,11 @@ async def get_curriculum_json(
 
 @router.get("/{student_id}/overview")
 async def get_curriculum_overview(
-    student_id: Annotated[str, Path(pattern=r"^\d{10}$")],
+    student_id: Annotated[str, Path(pattern=r"^[lL\d]\d{9}$")],
     background_tasks: BackgroundTasks
 ):
+    student_id = student_id.upper()
+
     try:
         data = await get_curriculum_data(student_id, background_tasks)
         if not data:

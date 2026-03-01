@@ -108,7 +108,7 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
             timedelta(weeks=(curr_w - 1))
 
         # 提取学号姓名
-        stu_match = re.search(r'(\d{10})([\u4e00-\u9fa5]+)', head_text)
+        stu_match = re.search(r'([L\d]\d{9})([\u4e00-\u9fa5]+)', head_text)
         student_id = stu_match.group(1) if stu_match else "未知学号"
         student_name = stu_match.group(2) if stu_match else "未知姓名"
     else:
