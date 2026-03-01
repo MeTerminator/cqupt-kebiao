@@ -39,7 +39,7 @@ async def _request_and_cache(student_id: str) -> Tuple[str, str, str]:
             f"ksapbk_html_ts:{student_id}": now_ts,
         }
         for key, val in data_map.items():
-            pipe.set(key, val, ex=3600)
+            pipe.set(key, val)
         await pipe.execute()
 
     return kebiao_html, ksap_html, ksapbk_html
