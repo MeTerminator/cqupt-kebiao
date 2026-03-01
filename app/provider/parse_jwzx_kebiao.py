@@ -151,10 +151,48 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
                     if "4节连上" in lines:
                         lines.remove("4节连上")
 
-                    course_name = lines[1].split('-', 1)[-1]
+                    class_id = lines[0]
+                    course_id, course_name = lines[1].split('-', 1)
                     location = lines[2].replace('地点：', '')
                     week_str = lines[3]
-                    teacher = lines[4].split(' ')[0] if len(lines) > 4 else ""
+
+                    # 解析 教师 选必修类型 学分
+                    parts = lines[4].split(' ')
+                    teacher_parts = []
+                    course_type = ""
+                    credit = ""
+
+                    for part in parts:
+                        part = part.strip()
+                        if not part:
+                            continue
+
+                        # 1. 判断是否是选必修类型
+                        if part in ["必修", "选修", "限选", "任选"]:
+                            course_type = part
+
+                        # 2. 判断是否包含学分（特征：包含“学分”二字）
+                        elif "学分" in part:
+                            # 提取数字部分，例如 "4.0学分" -> "4.0"
+                            credit = part.replace("学分", "")
+
+                        # 3. 过滤掉无用的后缀链接
+                        elif "名单" in part or "查询" in part:
+                            continue
+
+                        # 4. 如果还没解析到类型和学分，且不是干扰项，则属于教师姓名
+                        else:
+                            # 只有在还没确定课程类型之前，才认为是老师名字
+                            # 这样可以处理外教带空格的名字
+                            if not course_type and not credit:
+                                teacher_parts.append(part)
+
+                    # 拼接教师姓名：外教用空格隔开，中文名拼接后也是正确的
+                    teacher = " ".join(teacher_parts)
+
+                    # 如果 teacher 为空（容错），设置默认值
+                    if not teacher:
+                        teacher = "未知教师"
 
                     current_periods = get_period_numbers(current_periods)
 
@@ -162,6 +200,10 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
                     for w in weeks:
                         schedule_instances.append({
                             'course': course_name,
+                            'course_id': course_id,
+                            'class_id': class_id,
+                            'course_type': course_type,
+                            'credit': credit,
                             'teacher': teacher,
                             'week': w,
                             'day': day_idx,

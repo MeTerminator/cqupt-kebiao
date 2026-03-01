@@ -19,17 +19,24 @@ class ExamInstance(BaseModel):
 
 class CourseInstance(BaseModel):
     course: str = Field(..., description="课程名称")
+    course_id: Optional[str] = Field(None, description="课程代码")
+    class_id: Optional[str] = Field(None, description="教学班号")
+    course_type: Optional[str] = Field(None, description="修读类型")
+    credit: Optional[str] = Field(None, description="学分")
+
     teacher: str = Field(..., description="教师姓名")
-    week: int | None = Field(..., ge=1, le=30, description="周次")
+    week: int | None = Field(..., ge=0, le=30, description="周次")
     day: int | None = Field(..., ge=1, le=7, description="星期几")
-    periods: list[int] = Field(..., description="节次描述")
+    periods: list[int] = Field(..., description="节次列表")
+
     date: str = Field(..., description="上课日期")
-    start_time: str = Field(..., description="上课时间")
-    end_time: str = Field(..., description="下课时间")
+    start_time: str = Field(..., description="起始时间")
+    end_time: str = Field(..., description="结束时间")
     location: str = Field(..., description="地点")
+
     description: str | None = Field(None, description="描述")
     conflicts: Optional[List] = Field(None, description="冲突课程")
-    type: str = Field(default="常规", description="课程类型")
+    type: str = Field(default="常规", description="日程分类（常规/停课/补课/代课）")
 
 
 class ScheduleSchema(BaseModel):
