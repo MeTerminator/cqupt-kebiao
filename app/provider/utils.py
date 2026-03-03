@@ -30,7 +30,11 @@ def exams_to_course(exams: List[ExamInstance], week_1_monday: Optional[datetime]
             location=f"{exam.location} {exam.seat}",
             description=None,
             conflicts=None,
-            type="考试"
+            type="考试",
+            course_id=None,
+            class_id=None,
+            course_type=None,
+            credit=None,
         ))
     return course_instances
 
@@ -38,13 +42,13 @@ def exams_to_course(exams: List[ExamInstance], week_1_monday: Optional[datetime]
 def resolve_schedule_conflicts(schedule: ScheduleSchema) -> ScheduleSchema:
     """
     检查并合并课程冲突。
-    如果 week, day, periods 发生冲突，则合并为一个 CourseInstance，并将原始课程存入 conflicts。
+    如果 week, day, periods 发生冲突，则合并为一个 CourseInstance，
+    合并后的时间取所有冲突课程中最宽的时间跨度（最早开始到最晚结束）。
     """
-    # 1. 建立槽位映射 (week, day, period) -> merged_instances 的索引
     slot_map = {}
     merged_instances: List[CourseInstance] = []
 
-    # 按时间排序（周次、星期、开始节次）
+    # 按时间排序
     original_instances = sorted(
         schedule.instances,
         key=lambda x: (x.week or 0, x.day or 0,
@@ -52,7 +56,6 @@ def resolve_schedule_conflicts(schedule: ScheduleSchema) -> ScheduleSchema:
     )
 
     def get_course_detail_text(num: int, inst: CourseInstance) -> str:
-        """格式化单条冲突详情文本"""
         return (
             f"# {num}\\n"
             f"课程：{inst.course}\\n"
@@ -63,13 +66,11 @@ def resolve_schedule_conflicts(schedule: ScheduleSchema) -> ScheduleSchema:
         )
 
     for inst in original_instances:
-        # 跳过无效数据
         if inst.week is None or inst.day is None:
             merged_instances.append(inst)
             continue
 
         conflict_idx = None
-        # 检查当前课程的任一节次是否已被占用
         for p in inst.periods:
             key = (inst.week, inst.day, p)
             if key in slot_map:
@@ -80,49 +81,51 @@ def resolve_schedule_conflicts(schedule: ScheduleSchema) -> ScheduleSchema:
             # --- 发现冲突，合并到现有实例 ---
             existing = merged_instances[conflict_idx]
 
-            # 1. 如果是第一次发现冲突（conflicts 为 None）
             if existing.conflicts is None:
-                # 备份第一个课程，清空其 conflicts 属性防止循环引用
                 first_backup = existing.model_copy()
                 first_backup.conflicts = None
-
                 existing.conflicts = [first_backup]
                 existing.type = "冲突"
-                # 初始化描述
                 existing.description = f"【冲突详情】\\n{get_course_detail_text(1, first_backup)}"
 
-            # 2. 备份当前冲突的课程并加入列表
             inst_backup = inst.model_copy()
-            inst_backup.conflicts = None  # 切断嵌套引用
+            inst_backup.conflicts = None
             existing.conflicts.append(inst_backup)
 
-            # 3. 更新描述文本（追加第 N 个详情）
+            # 更新描述文本
             count = len(existing.conflicts)
             existing.description += f"\\n{get_course_detail_text(count, inst)}"
 
-            # 4. 更新基础显示字段（拼接名称和老师）
+            # 更新时间（取最早开始和最晚结束）
+            # Python 字符串比较 "08:00" < "10:00" 是成立的，所以可以直接 min/max
+            existing.start_time = min(existing.start_time, inst.start_time)
+            existing.end_time = max(existing.end_time, inst.end_time)
+
+            # 更新基础显示字段
             if inst.course not in existing.course:
                 existing.course = f"{existing.course} / {inst.course}"
-            if inst.teacher and inst.teacher not in existing.teacher:
+
+            # 处理教师字段（过滤掉 None 和 重复项）
+            current_teachers = set(t.strip()
+                                   for t in existing.teacher.split('/') if t.strip())
+            if inst.teacher and inst.teacher.strip() not in current_teachers:
                 existing.teacher = f"{existing.teacher} / {inst.teacher}"
 
-            # 5. 合并并重新映射所有节次
+            # 合并节次并更新索引
             existing.periods = sorted(
                 list(set(existing.periods + inst.periods)))
             for p in existing.periods:
                 slot_map[(inst.week, inst.day, p)] = conflict_idx
 
         else:
-            # --- 无冲突，作为新项加入 ---
+            # --- 无冲突 ---
             current_idx = len(merged_instances)
             new_item = inst.model_copy()
-            # 明确初始化为 None，确保没有冲突时 JSON 不包含多余数据
             new_item.conflicts = None
             merged_instances.append(new_item)
             for p in inst.periods:
                 slot_map[(inst.week, inst.day, p)] = current_idx
 
-    # 将处理后的列表回填
     schedule.instances = merged_instances
     return schedule
 
