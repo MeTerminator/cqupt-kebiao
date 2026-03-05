@@ -13,28 +13,55 @@ from app.exceptions.JwzxError import JwzxError
 # http://jwzx.cqupt.edu.cn/kebiao/kb_stu.php?xh=<学号>
 
 
-def get_period_time(start_period, end_period):
-    """根据起始节数和结束节数，计算起始和结束时间（每节45min，课间统一10min）"""
-    # 每一节课对应的标准起始时间
+def get_period_time(start_period: int, end_period: int):
+    """
+    根据起始和结束节数计算时间。
+    适配逻辑：若 3 节或更多节连上，将原本 30 分钟的大课间缩减为 10 分钟，从而提前下课。
+    """
+    # 每一节课对应的标准起始时间 (重邮标准)
     start_map = {
         1: "08:00", 2: "08:55", 3: "10:15", 4: "11:10",
         5: "14:00", 6: "14:55", 7: "16:15", 8: "17:10",
         9: "19:00", 10: "19:55", 11: "20:50", 12: "21:45",
     }
+
+    # 每一节课对应的标准结束时间 (基于每节 45 分钟计算)
+    end_map = {
+        1: "08:45", 2: "09:40", 3: "11:00", 4: "11:55",
+        5: "14:45", 6: "15:40", 7: "17:00", 8: "17:55",
+        9: "19:45", 10: "20:40", 11: "21:35", 12: "22:30",
+    }
+
     try:
         start_str = start_map[start_period]
-        # 计算总节数 (例如 1-3 节就是 3 节)
+        end_str = end_map[end_period]
+
+        # 计算连上的节数
         count = end_period - start_period + 1
 
-        # 计算总时长：每节 45 分钟 + 中间 (count-1) 个 10 分钟课间
-        total_minutes = (count * 45) + ((count - 1) * 10)
+        # --- 提前下课逻辑补偿 ---
+        # 如果连上节数 == 3，且跨越了大课间（2-3节 或 6-7节）
+        # 大课间原本 30min，普通课间 10min，缩减后会提前 20min 下课
+        if count == 3:
+            # 检查是否跨越了上午的大课间 (2-3节)
+            crossed_morning_break = start_period <= 2 and end_period >= 3
+            # 检查是否跨越了下午的大课间 (6-7节)
+            crossed_afternoon_break = start_period <= 6 and end_period >= 7
 
-        start_dt = datetime.strptime(start_str, "%H:%M")
-        end_dt = start_dt + timedelta(minutes=total_minutes)
+            # 计算需要提前的总分钟数
+            early_minutes = 0
+            if crossed_morning_break:
+                early_minutes += 20
+            if crossed_afternoon_break:
+                early_minutes += 20
 
-        return start_str, end_dt.strftime("%H:%M")
+            if early_minutes > 0:
+                current_end_dt = datetime.strptime(end_str, "%H:%M")
+                new_end_dt = current_end_dt - timedelta(minutes=early_minutes)
+                end_str = new_end_dt.strftime("%H:%M")
+
+        return start_str, end_str
     except Exception:
-        # 容错处理
         return "08:00", "08:45"
 
 
@@ -145,11 +172,12 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
                         start_p = int(re.findall(r'\d+', period_name)[0])
                         current_periods = f"{start_p}-{start_p+3}"
 
-                    if "3节连上" in lines:
-                        lines.remove("3节连上")
+                    if "8节连上" in div.get_text():
+                        start_p = int(re.findall(r'\d+', period_name)[0])
+                        current_periods = f"{start_p}-{start_p+7}"
 
-                    if "4节连上" in lines:
-                        lines.remove("4节连上")
+                    tags_to_remove = ["3节连上", "4节连上", "8节连上"]
+                    lines = [l for l in lines if l not in tags_to_remove]
 
                     class_id = lines[0]
                     course_id, course_name = lines[1].split('-', 1)
