@@ -334,6 +334,10 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
             item['date'] = weekday_to_date(
                 item['week'], item['day'], week_1_monday)
 
+            # 学分 .5 处理
+            if item['credit'] == ".5":
+                item['credit'] = "0.5"
+
             validated_instances.append(CourseInstance(**item))
         except ValidationError as e:
             print(f"解析条目失败: {e}")
