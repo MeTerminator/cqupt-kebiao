@@ -341,7 +341,7 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
 
             # 学分 .0 处理
             if item['credit'] == ".0":
-                item['credit'] = "0"
+                item['credit'] = "0.0"
 
             validated_instances.append(CourseInstance(**item))
         except ValidationError as e:
