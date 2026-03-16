@@ -26,6 +26,7 @@ class CourseInstance(BaseModel):
 
     teacher: str = Field(..., description="教师姓名")
     week: int | None = Field(..., ge=0, le=30, description="周次")
+    week_str: Optional[str] = Field("", description="周次描述")
     day: int | None = Field(..., ge=1, le=7, description="星期几")
     periods: list[int] = Field(..., description="节次列表")
 

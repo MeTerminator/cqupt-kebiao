@@ -234,6 +234,7 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
                             'credit': credit,
                             'teacher': teacher,
                             'week': w,
+                            'week_str': week_str,
                             'day': day_idx,
                             'periods': current_periods,
                             'location': location,
@@ -337,6 +338,10 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
             # 学分 .5 处理
             if item['credit'] == ".5":
                 item['credit'] = "0.5"
+
+            # 学分 .0 处理
+            if item['credit'] == ".0":
+                item['credit'] = "0"
 
             validated_instances.append(CourseInstance(**item))
         except ValidationError as e:
