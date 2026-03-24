@@ -335,12 +335,15 @@ def parse_jwzx_kebiao(html_content, request_at: Optional[datetime] = None) -> Sc
             item['date'] = weekday_to_date(
                 item['week'], item['day'], week_1_monday)
 
+            if item.get('credit') is None:
+                item['credit'] = "0.0"
+
             # 学分 .5 处理
-            if item['credit'] == ".5":
+            if item.get('credit') == ".5":
                 item['credit'] = "0.5"
 
             # 学分 .0 处理
-            if item['credit'] == ".0":
+            if item.get('credit') == ".0":
                 item['credit'] = "0.0"
 
             validated_instances.append(CourseInstance(**item))
