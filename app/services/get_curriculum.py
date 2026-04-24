@@ -8,9 +8,9 @@ from app.provider.request_jwzx import request_jwzx_kebiao, request_jwzx_ksap, re
 from app.provider.parse_jwzx_kebiao import parse_jwzx_kebiao
 from app.provider.parse_jwzx_ksap import parse_jwzx_ksap, parse_jwzx_ksapBk
 from app.provider.utils import exams_to_course, resolve_schedule_conflicts, sort_schedule_by_time
+from app.provider.adjustments import apply_holiday_adjustments
 from app.schemas.schemas import ScheduleSchema
 from app.exceptions.JwzxError import JwzxError
-from app.schemas.schemas import ScheduleSchema
 
 # 定义常量方便维护
 CACHE_KEYS = ["kebiao_html", "ksap_html", "ksapbk_html"]
@@ -104,6 +104,9 @@ def parse_all_data(request_at: datetime, kb_html: str, ks_html: str, bk_html: st
 
     # 7. 合并到主课表实例中
     curriculum_data.instances.extend(exam_courses)
+
+    # 应用调休逻辑
+    curriculum_data = apply_holiday_adjustments(curriculum_data)
 
     # 8. 处理冲突课程（按照你要求的 #1, #2 格式合并 description）
     curriculum_data = resolve_schedule_conflicts(curriculum_data)
