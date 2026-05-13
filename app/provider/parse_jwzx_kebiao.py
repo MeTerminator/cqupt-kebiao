@@ -107,7 +107,7 @@ def parse_time_detail(text):
     """解析如 '18周星期3第1-2节' 或 '星期2第5-6节'"""
     week_m = re.search(r"(\d+(?:-\d+)?)周", text)
     day_m = re.search(r"星期(\d+)", text)
-    per_m = re.search(r"第(\d+(?:-\d+)?)节", text)
+    per_m = re.search(r"第([0-9\-\,、]+)节", text)
 
     weeks = parse_week_string(week_m.group(1)) if week_m else []
     day = int(day_m.group(1)) if day_m else None
@@ -117,13 +117,20 @@ def parse_time_detail(text):
 
 def get_period_numbers(period_str):
     """将 '5-7' 或 '5、6' 转化为 [5, 6, 7]"""
-    nums = re.findall(r"\d+", str(period_str))
-    if not nums:
-        return []
-    if "-" in str(period_str) or "节" in str(period_str):
-        start, end = int(nums[0]), int(nums[-1])
-        return list(range(start, end + 1))
-    return [int(n) for n in nums]
+    result = set()
+    s = str(period_str).replace("、", ",").replace("节", "")
+    parts = s.split(",")
+    for part in parts:
+        nums = re.findall(r"\d+", part)
+        if not nums:
+            continue
+        if "-" in part:
+            start, end = int(nums[0]), int(nums[-1])
+            result.update(range(start, end + 1))
+        else:
+            for n in nums:
+                result.add(int(n))
+    return sorted(list(result))
 
 
 def parse_jwzx_kebiao(
@@ -163,7 +170,8 @@ def parse_jwzx_kebiao(
     else:
         week_1_monday = datetime(2025, 9, 1)
 
-    week_1_monday = week_1_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_1_monday = week_1_monday.replace(
+        hour=0, minute=0, second=0, microsecond=0)
 
     schedule_instances = []
 
@@ -321,7 +329,7 @@ def parse_jwzx_kebiao(
                     if op_type == "停课":
                         if course_name in inst["course"]:
                             continue
-                    elif op_type in ("代课", "补课") and inst["type"] == "常规":
+                    elif op_type == "代课" and inst["type"] == "常规":
                         continue
 
                 new_schedule.append(inst)
@@ -332,7 +340,8 @@ def parse_jwzx_kebiao(
             if op_type in ("补课", "代课"):
                 sub_teacher = tds[10]
                 final_teacher = (
-                    sub_teacher if (op_type == "代课" and sub_teacher) else orig_teacher
+                    sub_teacher if (
+                        op_type == "代课" and sub_teacher) else orig_teacher
                 )
 
                 # 如果是代课且我们抓到了原地点，就用原地点；否则用调停课表里的地点
@@ -340,20 +349,27 @@ def parse_jwzx_kebiao(
                 if op_type == "代课" and original_location:
                     m_location = original_location
 
-                affected_per_str_nums = get_period_numbers(affected_per_str)
+                per_str_clean = str(affected_per_str).replace(
+                    "、", ",").replace("节", "")
+                per_parts = per_str_clean.split(",")
 
-                for w in affected_weeks:
-                    schedule_instances.append(
-                        {
-                            "course": f"{course_name}",
-                            "teacher": final_teacher,
-                            "week": w,
-                            "day": affected_day,
-                            "periods": affected_per_str_nums,
-                            "location": m_location,
-                            "type": op_type,
-                        }
-                    )
+                for per_part in per_parts:
+                    affected_per_str_nums = get_period_numbers(per_part)
+                    if not affected_per_str_nums:
+                        continue
+
+                    for w in affected_weeks:
+                        schedule_instances.append(
+                            {
+                                "course": f"{course_name}",
+                                "teacher": final_teacher,
+                                "week": w,
+                                "day": affected_day,
+                                "periods": affected_per_str_nums,
+                                "location": m_location,
+                                "type": op_type,
+                            }
+                        )
 
     # 验证并转换每一个课程
     validated_instances = []
@@ -364,7 +380,8 @@ def parse_jwzx_kebiao(
             item["end_time"] = e_t
 
             # 计算该课程具体的日期
-            item["date"] = weekday_to_date(item["week"], item["day"], week_1_monday)
+            item["date"] = weekday_to_date(
+                item["week"], item["day"], week_1_monday)
 
             if item.get("credit") is None:
                 item["credit"] = "0.0"
