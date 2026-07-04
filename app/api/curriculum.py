@@ -1,6 +1,8 @@
 from typing import Annotated, Optional
 from fastapi import APIRouter, HTTPException, Response, Path, BackgroundTasks, Query
 import httpx
+import os
+import json
 
 from app.services.get_curriculum import get_curriculum_data
 from app.services.get_overview import get_schedule_overview
@@ -89,3 +91,17 @@ async def get_curriculum_overview(
         raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"内部错误: {str(e)}")
+
+
+@router.get("/adjustments")
+async def get_curriculum_adjustments():
+    base_path = os.getcwd()
+    adjust_file = os.path.join(base_path, "adjustments.json")
+    if not os.path.exists(adjust_file):
+        raise HTTPException(status_code=404, detail="调休配置文件不存在")
+    try:
+        with open(adjust_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取调休配置失败: {str(e)}")
