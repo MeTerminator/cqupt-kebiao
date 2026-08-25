@@ -1,16 +1,22 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from app.core.redis import redis_client
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from app.core.database import database
 from app.api import curriculum
 import uvicorn
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时
-    yield
-    # 关闭时
-    await redis_client.close()
+    await database.connect()
+    try:
+        yield
+    finally:
+        await database.close()
 
 app = FastAPI(lifespan=lifespan)
 

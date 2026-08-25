@@ -8,9 +8,12 @@ wheels/
 
 # Virtual environments
 .venv
+.env
 
 # macOS
 .DS_Store
 
-# Test
-test
+# Test artifacts and local test code
+test/
+tests/
+.pytest_cache/

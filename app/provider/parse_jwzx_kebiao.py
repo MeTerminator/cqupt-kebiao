@@ -2,7 +2,7 @@ import re
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from pydantic import ValidationError
-from typing import Optional
+from typing import Optional, Tuple
 
 from app.schemas.schemas import ScheduleSchema, CourseInstance
 from app.provider.utils import weekday_to_date
@@ -11,6 +11,48 @@ from app.exceptions.JwzxError import JwzxError
 
 # 课表 HTML 来源
 # http://jwzx.cqupt.edu.cn/kebiao/kb_stu.php?xh=<学号>
+
+
+def extract_schedule_metadata(
+    html_content: str,
+) -> Tuple[Optional[str], Optional[str], Optional[int]]:
+    """从教务在线课表页提取姓名、学年和学期。"""
+    soup = BeautifulSoup(html_content, "html.parser")
+    head = soup.find("div", id="head")
+    text = head.get_text(" ", strip=True) if head else soup.get_text(" ", strip=True)
+    student_match = re.search(r"[Ll\d]\d{9}\s*([\u4e00-\u9fff]+)", text)
+    term_match = re.search(r"(\d{4}-\d{4})学年(\d)学期", text)
+    return (
+        student_match.group(1) if student_match else None,
+        term_match.group(1) if term_match else None,
+        int(term_match.group(2)) if term_match else None,
+    )
+
+
+def extract_student_name(html_content: str) -> Optional[str]:
+    """从教务在线课表页提取学生姓名。"""
+    return extract_schedule_metadata(html_content)[0]
+
+
+def infer_week_1_monday(academic_year: str, semester: str) -> datetime:
+    """
+    公示页没有“今天是第几周”信息时推导学期第一周周一。
+
+    仅作为普通课表页缺少周次时的容错。下学期公示页由
+    config.json 中的 next_curriculum.week_1_monday 显式指定。
+    """
+    year_match = re.match(r"(\d{4})-\d{4}", academic_year)
+    if not year_match or semester not in {"1", "2"}:
+        raise JwzxError("无法从课表公示页推导学期开始日期。")
+
+    start_year = int(year_match.group(1))
+    anchor = (
+        datetime(start_year, 9, 1)
+        if semester == "1"
+        else datetime(start_year + 1, 3, 1)
+    )
+    days_until_monday = (7 - anchor.weekday()) % 7
+    return anchor + timedelta(days=days_until_monday)
 
 
 def get_period_time(start_period: int, end_period: int):
@@ -134,7 +176,9 @@ def get_period_numbers(period_str):
 
 
 def parse_jwzx_kebiao(
-    html_content, request_at: Optional[datetime] = None
+    html_content,
+    request_at: Optional[datetime] = None,
+    week_1_monday: Optional[datetime] = None,
 ) -> ScheduleSchema:
     soup = BeautifulSoup(html_content, "html.parser")
 
@@ -154,21 +198,23 @@ def parse_jwzx_kebiao(
     academic_year = term_match.group(1) if term_match else "未知学年"
     semester = term_match.group(2) if term_match else "未知学期"
 
+    # 学号、姓名在当前课表页和下学期公示页中都位于页头。
+    stu_match = re.search(r"([Ll\d]\d{9})\s*([\u4e00-\u9fff]+)", head_text)
+    if not stu_match:
+        raise JwzxError("无法从课表页读取学生姓名，该页面不是有效课表。")
+    student_id = stu_match.group(1).upper()
+    student_name = stu_match.group(2)
+
     info = re.search(r"今天是第\s*(\d+)\s*周\s*星期\s*(\d+)", head_text)
-    if info:
+    if week_1_monday is None and info:
         curr_w, curr_d = int(info.group(1)), int(info.group(2))
         week_1_monday = (
             request_at
             - timedelta(days=request_at.weekday())
             - timedelta(weeks=(curr_w - 1))
         )
-
-        # 提取学号姓名
-        stu_match = re.search(r"([L\d]\d{9})([\u4e00-\u9fa5]+)", head_text)
-        student_id = stu_match.group(1) if stu_match else "未知学号"
-        student_name = stu_match.group(2) if stu_match else "未知姓名"
-    else:
-        week_1_monday = datetime(2025, 9, 1)
+    elif week_1_monday is None:
+        week_1_monday = infer_week_1_monday(academic_year, semester)
 
     week_1_monday = week_1_monday.replace(
         hour=0, minute=0, second=0, microsecond=0)
@@ -186,6 +232,11 @@ def parse_jwzx_kebiao(
             period_name = tds[0].get_text(strip=True)
             for day_idx, td in enumerate(tds[1:], start=1):
                 for div in td.find_all("div", class_="kbTd"):
+                    # 教务在线会把无需到课的课程标记为“自修”。
+                    # 这类课程不展示，也不参与后续的时间冲突合并。
+                    if any(text.strip() == "自修" for text in div.stripped_strings):
+                        continue
+
                     lines = [
                         l.strip()
                         for l in div.get_text(separator="\n").split("\n")

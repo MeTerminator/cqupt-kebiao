@@ -5,7 +5,7 @@
 
 ## ✨ 特性
 
-* 🚀 **高性能响应**: 基于 **FastAPI** 异步 IO 构建；采用 **Redis 永不过期策略**，实现“先响应缓存，后台静默更新”，秒级首屏加载。
+* 🚀 **高性能响应**: 基于 **FastAPI** 异步 IO 构建；采用 **PostgreSQL 持久化缓存**，实现“先响应缓存，后台静默更新”。
 * 🔄 **全量数据整合**:
     * **常规课表**: 精准解析课程代码、教学班、学分及修读类型。
     * **调停课**: 自动追踪“补课、代课、停课”信息并动态修正主课表。
@@ -23,7 +23,7 @@
 ## 🛠️ 环境要求
 
 * **内网环境**: 本程序必须部署于 **重邮校园网（校内 IP）** 环境下，才可穿透访问教务在线 API。
-* **依赖服务**: Redis (用于数据持久化缓存)。
+* **依赖服务**: PostgreSQL（用于持久化原始页面、缓存时间和学生姓名）。
 
 
 ## 📖 接口文档
@@ -52,7 +52,35 @@
 返回详细的 JSON 格式课表实例，适合移动端/小程序直接渲染。
 
 
-### 3. 课程总览
+### 3. 下学期课表
+
+* `GET /api/curriculum/{student_id}/curriculum-next.json`
+* `GET /api/curriculum/{student_id}/curriculum-next.ics`
+
+数据来源为教务在线课表公示页。此功能受项目根目录 `config.json` 控制：
+
+```json
+{
+  "next_curriculum": {
+    "enabled": true,
+    "week_1_monday": "2026-09-07"
+  }
+}
+```
+
+`enabled` 为 `false` 时，两个下学期接口均返回 HTTP 503 JSON：
+
+```json
+{
+  "enabled": false,
+  "message": "下学期课表查询功能暂未开启"
+}
+```
+
+下学期的学年和学期直接从教务在线页面读取。只有能同时读取姓名、学年和学期的页面才会入库。
+
+
+### 4. 课程总览
 
 `GET /api/curriculum/{student_id}/overview`
 
@@ -70,17 +98,53 @@ cd cqupt-kebiao
 
 
 2. **配置环境变量**
-创建 `.env` 文件并配置 Redis 连接：
+创建 `.env` 文件并配置 PostgreSQL 连接和教务在线请求头：
 ```env
-REDIS_URL=redis://localhost:6379/0
-
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cqupt_kebiao
+KEBIAO_REQUEST_HEADERS={"User-Agent":"Mozilla/5.0"}
 ```
+
+应用启动时会自动创建或升级 `student_curriculum_cache` 表。表以
+`student_id + academic_year + semester` 为联合主键，不指定学期时默认读取最新学期。
+修改 `config.json` 后需要重启应用。
 
 
 3. **运行服务**
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8000
 
+```
+
+
+## Redis 数据迁移
+
+从旧版 Redis 复制课表 HTML、考试 HTML、补考 HTML、时间戳和可解析的学生姓名。
+脚本不会删除 Redis 原数据，也不会覆盖 PostgreSQL 中已存在的同学号、同学期记录。
+执行前需在 `.env` 中临时配置 `REDIS_URL`，或通过 `--redis-url` 传入旧 Redis 地址。
+
+```bash
+# 先预览
+uv run --group migration python scripts/migrate_redis_to_postgres.py
+
+# 确认后执行
+uv run --group migration python scripts/migrate_redis_to_postgres.py --apply
+```
+
+可使用 `--student-id <学号>` 仅迁移单个学号，使用 `--verbose` 查看每条结果。
+
+
+## 无姓名数据清理
+
+清理脚本默认仅统计将被删除的记录：
+
+```bash
+python3 scripts/delete_nameless_postgres_data.py --verbose
+```
+
+确认后执行删除，并为 `student_name` 启用 `NOT NULL` 约束：
+
+```bash
+python3 scripts/delete_nameless_postgres_data.py --apply --verbose
 ```
 
 

@@ -6,7 +6,7 @@ from typing import Dict, Optional
 
 
 DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
 }
 BASE_URL = "http://jwzx.cqupt.edu.cn"
 
@@ -33,6 +33,10 @@ async def _fetch_jwzx(path: str, params: Optional[Dict[str, str]] = None) -> str
 
 async def request_jwzx_kebiao(student_id: str) -> str:
     return await _fetch_jwzx("/kebiao/kb_stu.php", {"xh": student_id})
+
+
+async def request_jwzx_next_kebiao(student_id: str) -> str:
+    return await _fetch_jwzx("/kebiao/kbgs_stu.php", {"xh": student_id})
 
 
 async def request_jwzx_ksap(student_id: str) -> str:
