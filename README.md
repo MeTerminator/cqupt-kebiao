@@ -98,11 +98,14 @@ cd cqupt-kebiao
 
 
 2. **配置环境变量**
-创建 `.env` 文件并配置 PostgreSQL 连接和教务在线请求头：
+创建 `.env` 文件并配置 PostgreSQL 连接。教务在线请求使用内置请求头；如生产环境需要通过 SOCKS5 代理访问，可选地设置代理地址：
 ```env
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cqupt_kebiao
-KEBIAO_REQUEST_HEADERS={"User-Agent":"Mozilla/5.0"}
+# 未设置 KEBIAO_REQUEST_PROXY 时直连
+KEBIAO_REQUEST_PROXY=socks5://user:password@proxy.example.com:1080
 ```
+
+`KEBIAO_REQUEST_PROXY` 也可使用无需认证的地址，例如 `socks5://127.0.0.1:1080`。
 
 应用启动时会自动创建或升级 `student_curriculum_cache` 表。表以
 `student_id + academic_year + semester` 为联合主键，不指定学期时默认读取最新学期。

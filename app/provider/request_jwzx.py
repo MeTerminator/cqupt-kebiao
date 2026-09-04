@@ -1,31 +1,27 @@
 import httpx
 import os
-import json
-import functools
 from typing import Dict, Optional
 
 
-DEFAULT_HEADERS = {
+HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
 }
 BASE_URL = "http://jwzx.cqupt.edu.cn"
 
 
-@functools.lru_cache()
-def get_headers() -> Dict[str, str]:
-    env_headers = os.getenv("KEBIAO_REQUEST_HEADERS")
-    if env_headers:
-        try:
-            return json.loads(env_headers)
-        except json.JSONDecodeError:
-            print("Warning: KEBIAO_REQUEST_HEADERS is not a valid JSON string.")
-    return DEFAULT_HEADERS
+def get_proxy() -> Optional[str]:
+    """Return the optional outbound proxy URL configured for JWZX requests."""
+    return os.getenv("KEBIAO_REQUEST_PROXY") or None
 
 
 async def _fetch_jwzx(path: str, params: Optional[Dict[str, str]] = None) -> str:
     """通用的 JWZX 请求封装"""
-    headers = get_headers()
-    async with httpx.AsyncClient(headers=headers, timeout=10, base_url=BASE_URL) as client:
+    async with httpx.AsyncClient(
+        headers=HEADERS,
+        timeout=10,
+        base_url=BASE_URL,
+        proxy=get_proxy(),
+    ) as client:
         response = await client.get(path, params=params)
         response.raise_for_status()
         return response.text
