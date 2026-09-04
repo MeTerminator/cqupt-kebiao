@@ -8,7 +8,9 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
 }
 BASE_URL = "http://jwzx.cqupt.edu.cn"
-logger = logging.getLogger(__name__)
+# Reuse Uvicorn's configured error logger so records are visible with its
+# default `uvicorn main:app ...` command.
+logger = logging.getLogger("uvicorn.error")
 
 
 def get_proxy() -> Optional[str]:
@@ -18,12 +20,14 @@ def get_proxy() -> Optional[str]:
 
 async def _fetch_jwzx(path: str, params: Optional[Dict[str, str]] = None) -> str:
     """通用的 JWZX 请求封装"""
+    proxy = get_proxy()
+    logger.info("JWZX request started: path=%s proxy_enabled=%s", path, bool(proxy))
     try:
         async with httpx.AsyncClient(
             headers=HEADERS,
             timeout=10,
             base_url=BASE_URL,
-            proxy=get_proxy(),
+            proxy=proxy,
         ) as client:
             response = await client.get(path, params=params)
             response.raise_for_status()
