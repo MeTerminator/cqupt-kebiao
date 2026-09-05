@@ -252,6 +252,7 @@ class Database:
         semester: int,
         student_name: Optional[str],
         html: str,
+        fetched_at: Optional[datetime] = None,
     ) -> None:
         if not student_name or not student_name.strip():
             raise ValueError("学生姓名为空，拒绝写入课表缓存")
@@ -262,7 +263,7 @@ class Database:
                 student_id, academic_year, semester, student_name,
                 next_kebiao_html, next_kebiao_fetched_at,
                 updated_at
-            ) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+            ) VALUES ($1, $2, $3, $4, $5, COALESCE($6, NOW()), NOW())
             ON CONFLICT (student_id, academic_year, semester) DO UPDATE SET
                 student_name = COALESCE(EXCLUDED.student_name, student_curriculum_cache.student_name),
                 next_kebiao_html = EXCLUDED.next_kebiao_html,
@@ -274,6 +275,7 @@ class Database:
             semester,
             student_name,
             html,
+            fetched_at,
         )
 
 

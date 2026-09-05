@@ -41,6 +41,16 @@ def _is_stale(fetched_at: Optional[datetime]) -> bool:
     return (datetime.now(timezone.utc) - fetched_at).total_seconds() > CACHE_MAX_AGE_SECONDS
 
 
+def _with_updated_at(
+    data: Optional[ScheduleSchema], fetched_at: Optional[datetime]
+) -> Optional[ScheduleSchema]:
+    if data is not None and fetched_at is not None:
+        if fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+        data.updated_at = fetched_at.astimezone(SHANGHAI_TZ).replace(tzinfo=None)
+    return data
+
+
 def _as_local_naive(value: Optional[datetime]) -> datetime:
     if value is None:
         return datetime.now(SHANGHAI_TZ).replace(tzinfo=None)
@@ -49,7 +59,7 @@ def _as_local_naive(value: Optional[datetime]) -> datetime:
     return value
 
 
-async def _request_and_cache_current(student_id: str) -> Tuple[str, str, str]:
+async def _request_and_cache_current(student_id: str) -> Tuple[str, str, str, datetime]:
     """并发请求本学期课表、考试和补考页，然后原子写入 PostgreSQL。"""
     kebiao_html, ksap_html, ksapbk_html = await asyncio.gather(
         request_jwzx_kebiao(student_id),
@@ -61,6 +71,7 @@ async def _request_and_cache_current(student_id: str) -> Tuple[str, str, str]:
         raise JwzxError("无法从本学期课表中识别学生姓名，拒绝入库。")
     if academic_year is None or semester is None:
         raise JwzxError("无法从本学期课表中识别学年学期，拒绝入库。")
+    fetched_at = datetime.now(timezone.utc)
     await database.save_current_cache(
         student_id=student_id,
         academic_year=academic_year,
@@ -69,11 +80,14 @@ async def _request_and_cache_current(student_id: str) -> Tuple[str, str, str]:
         kebiao_html=kebiao_html,
         ksap_html=ksap_html,
         ksapbk_html=ksapbk_html,
+        kebiao_fetched_at=fetched_at,
+        ksap_fetched_at=fetched_at,
+        ksapbk_fetched_at=fetched_at,
     )
-    return kebiao_html, ksap_html, ksapbk_html
+    return kebiao_html, ksap_html, ksapbk_html, fetched_at
 
 
-async def _request_and_cache_next(student_id: str) -> str:
+async def _request_and_cache_next(student_id: str) -> Tuple[str, datetime]:
     """请求下学期公示课表并写入 PostgreSQL。"""
     html = await request_jwzx_next_kebiao(student_id)
     student_name, academic_year, semester = extract_schedule_metadata(html)
@@ -81,14 +95,16 @@ async def _request_and_cache_next(student_id: str) -> str:
         raise JwzxError("无法从下学期课表中识别学生姓名，拒绝入库。")
     if academic_year is None or semester is None:
         raise JwzxError("无法从下学期课表中识别学年学期，拒绝入库。")
+    fetched_at = datetime.now(timezone.utc)
     await database.save_next_cache(
         student_id=student_id,
         academic_year=academic_year,
         semester=semester,
         student_name=student_name,
         html=html,
+        fetched_at=fetched_at,
     )
-    return html
+    return html, fetched_at
 
 
 async def update_current_cache(student_id: str) -> None:
@@ -176,20 +192,24 @@ async def get_curriculum_data(
         if any(_is_stale(value) for value in timestamps):
             background_tasks.add_task(update_current_cache, student_id)
 
-        return parse_all_data(
+        data = parse_all_data(
             _as_local_naive(cache.get("kebiao_fetched_at")),
             cache["kebiao_html"],
             cache["ksap_html"],
             cache["ksapbk_html"],
         )
 
-    kb_html, ks_html, bk_html = await _request_and_cache_current(student_id)
-    return parse_all_data(
-        datetime.now(SHANGHAI_TZ).replace(tzinfo=None),
+        return _with_updated_at(data, cache.get("kebiao_fetched_at"))
+
+    kb_html, ks_html, bk_html, fetched_at = await _request_and_cache_current(student_id)
+    data = parse_all_data(
+        _as_local_naive(fetched_at),
         kb_html,
         ks_html,
         bk_html,
     )
+
+    return _with_updated_at(data, fetched_at)
 
 
 async def get_next_curriculum_data(
@@ -199,7 +219,11 @@ async def get_next_curriculum_data(
     if cache and cache.get("next_kebiao_html"):
         if _is_stale(cache.get("next_kebiao_fetched_at")):
             background_tasks.add_task(update_next_cache, student_id)
-        return parse_next_data(cache["next_kebiao_html"])
+        data = parse_next_data(cache["next_kebiao_html"])
+        _with_updated_at(data, cache.get("next_kebiao_fetched_at"))
+        return data
 
-    html = await _request_and_cache_next(student_id)
-    return parse_next_data(html)
+    html, fetched_at = await _request_and_cache_next(student_id)
+    data = parse_next_data(html)
+    _with_updated_at(data, fetched_at)
+    return data

@@ -47,4 +47,5 @@ class ScheduleSchema(BaseModel):
     academic_year: str = Field(..., description="学年")
     semester: str = Field(..., description="学期")
     week_1_monday: datetime = Field(..., description="第一周周一的日期")
+    updated_at: Optional[datetime] = Field(None, description="数据成功抓取的本地时间；历史数据时间未知时为 null")
     instances: List[CourseInstance] = Field(..., description="所有的课程列表")

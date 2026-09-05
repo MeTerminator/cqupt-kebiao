@@ -49,6 +49,8 @@
 
 `GET /api/curriculum/{student_id}/curriculum.json`
 
+返回值新增 `updated_at`，表示这份数据成功抓取的本地时间，格式与 `week_1_monday` 一致，例如 `2026-09-06T11:30:00`。命中缓存时返回缓存的抓取时间；后台刷新成功后，后续请求才会获得新时间。历史缓存缺少抓取时间时返回 `null`。下学期 `curriculum-next.json` 同样提供此字段。
+
 返回详细的 JSON 格式课表实例，适合移动端/小程序直接渲染。
 
 
