@@ -49,7 +49,7 @@
 
 `GET /api/curriculum/{student_id}/curriculum.json`
 
-返回值新增 `updated_at`，表示这份数据成功抓取的本地时间，格式与 `week_1_monday` 一致，例如 `2026-09-06T11:30:00`。命中缓存时返回缓存的抓取时间；后台刷新成功后，后续请求才会获得新时间。历史缓存缺少抓取时间时返回 `null`。下学期 `curriculum-next.json` 同样提供此字段。
+返回值新增 `updated_at`，表示这份数据成功抓取的本地时间，包含时区信息，例如 `2026-09-06T11:30:00+08:00`。命中缓存时返回缓存的抓取时间；后台刷新成功后，后续请求才会获得新时间。历史缓存缺少抓取时间时返回 `null`。下学期 `curriculum-next.json` 同样提供此字段。
 
 返回详细的 JSON 格式课表实例，适合移动端/小程序直接渲染。
 
@@ -109,7 +109,8 @@ KEBIAO_REQUEST_PROXY=socks5://user:password@proxy.example.com:1080
 
 `KEBIAO_REQUEST_PROXY` 也可使用无需认证的地址，例如 `socks5://127.0.0.1:1080`。
 
-应用启动时会自动创建或升级 `student_curriculum_cache` 表。表以
+数据库访问使用 SQLAlchemy 2 异步 ORM。应用启动时会根据 ORM 模型自动创建
+`student_curriculum_cache` 表，并兼容升级旧版单主键表。表以
 `student_id + academic_year + semester` 为联合主键，不指定学期时默认读取最新学期。
 修改 `config.json` 后需要重启应用。
 

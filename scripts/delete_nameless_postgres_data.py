@@ -7,14 +7,17 @@
 import argparse
 import asyncio
 import os
+import sys
 from pathlib import Path
 
-import asyncpg
 from dotenv import load_dotenv
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
+
+from app.core.database import Database  # noqa: E402
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -44,25 +47,15 @@ def parse_arguments() -> argparse.Namespace:
 
 async def cleanup() -> int:
     args = parse_arguments()
-    connection = await asyncpg.connect(args.database_url)
+    database = Database(args.database_url)
+    await database.connect(initialize_schema=False)
 
     try:
-        table_exists = await connection.fetchval(
-            "SELECT to_regclass('student_curriculum_cache') IS NOT NULL"
-        )
-        if not table_exists:
+        if not await database.table_exists():
             print("student_curriculum_cache 表不存在，无需清理。")
             return 0
 
-        invalid_condition = "student_name IS NULL OR BTRIM(student_name) = ''"
-        rows = await connection.fetch(
-            f"""
-            SELECT student_id, academic_year, semester
-            FROM student_curriculum_cache
-            WHERE {invalid_condition}
-            ORDER BY student_id, academic_year, semester
-            """
-        )
+        rows = await database.get_nameless_caches()
 
         print(f"发现 {len(rows)} 条无姓名课表记录。")
         if args.verbose:
@@ -76,25 +69,11 @@ async def cleanup() -> int:
             print("当前为预览模式；确认后增加 --apply 执行删除。")
             return 0
 
-        async with connection.transaction():
-            result = await connection.execute(
-                f"""
-                DELETE FROM student_curriculum_cache
-                WHERE {invalid_condition}
-                """
-            )
-            await connection.execute(
-                """
-                ALTER TABLE student_curriculum_cache
-                    ALTER COLUMN student_name SET NOT NULL
-                """
-            )
-
-        deleted_count = int(result.rsplit(" ", 1)[-1])
+        deleted_count = await database.delete_nameless_caches()
         print(f"已删除 {deleted_count} 条无姓名记录，并启用 student_name NOT NULL 约束。")
         return 0
     finally:
-        await connection.close()
+        await database.close()
 
 
 if __name__ == "__main__":

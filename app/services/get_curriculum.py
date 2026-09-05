@@ -47,7 +47,7 @@ def _with_updated_at(
     if data is not None and fetched_at is not None:
         if fetched_at.tzinfo is None:
             fetched_at = fetched_at.replace(tzinfo=timezone.utc)
-        data.updated_at = fetched_at.astimezone(SHANGHAI_TZ).replace(tzinfo=None)
+        data.updated_at = fetched_at.astimezone(SHANGHAI_TZ)
     return data
 
 
