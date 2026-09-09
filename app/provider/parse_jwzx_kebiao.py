@@ -232,15 +232,16 @@ def parse_jwzx_kebiao(
             period_name = tds[0].get_text(strip=True)
             for day_idx, td in enumerate(tds[1:], start=1):
                 for div in td.find_all("div", class_="kbTd"):
-                    # 教务在线会把无需到课的课程标记为“自修”。
-                    # 这类课程不展示，也不参与后续的时间冲突合并。
-                    if any(text.strip() == "自修" for text in div.stripped_strings):
-                        continue
+                    # 教务在线会把无需到课的课程标记为“自修”。保留它以便
+                    # 展示；待调停课处理完成后，若与其他课程冲突再将其删除。
+                    is_self_study = any(
+                        text.strip() == "自修" for text in div.stripped_strings
+                    )
 
                     lines = [
                         l.strip()
                         for l in div.get_text(separator="\n").split("\n")
-                        if l.strip()
+                        if l.strip() and l.strip() != "自修"
                     ]
                     if len(lines) < 3:
                         continue
@@ -322,7 +323,8 @@ def parse_jwzx_kebiao(
                                 "day": day_idx,
                                 "periods": current_periods,
                                 "location": location,
-                                "type": "常规",
+                                "type": "自修" if is_self_study else "常规",
+                                "is_self_study": is_self_study,
                             }
                         )
 
@@ -421,6 +423,22 @@ def parse_jwzx_kebiao(
                                 "type": op_type,
                             }
                         )
+
+    # 自修课可展示，但不能与其他课程占用同一节。这里放在调停课处理之后，
+    # 使补课、代课等最终课表也能正确覆盖对应的自修课。
+    schedule_instances = [
+        inst
+        for inst in schedule_instances
+        if not inst.get("is_self_study")
+        or not any(
+            other is not inst
+            and not other.get("is_self_study")
+            and other["week"] == inst["week"]
+            and other["day"] == inst["day"]
+            and set(other["periods"]).intersection(inst["periods"])
+            for other in schedule_instances
+        )
+    ]
 
     # 验证并转换每一个课程
     validated_instances = []
