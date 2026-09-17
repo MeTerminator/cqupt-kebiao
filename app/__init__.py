@@ -1,0 +1,1 @@
+"""CQUPT curriculum service package."""

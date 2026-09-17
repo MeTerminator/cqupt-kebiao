@@ -1,13 +1,16 @@
-import json
-from pathlib import Path as FilePath
+import logging
 from typing import Annotated, Optional
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Path, Query, Response
 from fastapi.responses import JSONResponse
 
-from app.core.config import next_curriculum_enabled
+from app.core.config import get_adjustments_path, next_curriculum_enabled
 from app.exceptions.JwzxError import JwzxError
+from app.provider.adjustments_config import (
+    AdjustmentsConfigError,
+    load_adjustments_config,
+)
 from app.provider.generate_ics import generate_ics
 from app.schemas.schemas import ScheduleSchema
 from app.services.get_curriculum import get_curriculum_data, get_next_curriculum_data
@@ -15,7 +18,7 @@ from app.services.get_overview import get_schedule_overview
 
 
 router = APIRouter(prefix="/api/curriculum")
-PROJECT_ROOT = FilePath(__file__).resolve().parents[2]
+logger = logging.getLogger(__name__)
 
 
 def _validate_alarms(first: Optional[int], second: Optional[int]) -> list[int]:
@@ -156,11 +159,11 @@ async def get_curriculum_overview(
 
 @router.get("/adjustments")
 async def get_curriculum_adjustments():
-    adjust_file = PROJECT_ROOT / "adjustments.json"
-    if not adjust_file.exists():
-        raise HTTPException(status_code=404, detail="调休配置文件不存在")
+    adjust_file = get_adjustments_path()
     try:
-        with adjust_file.open("r", encoding="utf-8") as file:
-            return json.load(file)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"读取调休配置失败: {exc}")
+        return load_adjustments_config(adjust_file)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="调休配置文件不存在")
+    except AdjustmentsConfigError:
+        logger.exception("Failed to load adjustments file: %s", adjust_file)
+        raise HTTPException(status_code=500, detail="调休配置文件无效或无法读取")

@@ -13,7 +13,5 @@ wheels/
 # macOS
 .DS_Store
 
-# Test artifacts and local test code
-test/
-tests/
+# Test artifacts
 .pytest_cache/

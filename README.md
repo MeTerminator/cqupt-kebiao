@@ -154,6 +154,20 @@ python3 scripts/delete_nameless_postgres_data.py --apply --verbose
 ```
 
 
+## 容器部署
+
+服务默认读取项目根目录中的 `adjustments.json`。如需使用其他位置，可设置
+`ADJUSTMENTS_PATH`；相对路径始终基于项目根目录解析，不受进程工作目录影响。
+
+从挂载到容器的源码运行时，建议使用可编辑安装，确保模块始终指向当前源码：
+
+```bash
+pip install -e . && uvicorn main:app --host 0.0.0.0 --port 7120
+```
+
+`app/__init__.py` 必须保留，以免项目的 `app` 包与基础镜像中其他同名包混合导入。
+
+
 ## 📄 开源协议
 
 本项目基于 **[MIT License](https://www.google.com/search?q=LICENSE)** 协议开源。

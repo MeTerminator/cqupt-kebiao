@@ -1,11 +1,30 @@
 import json
+import os
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict
 
 
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.json"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_PATH = PROJECT_ROOT / "config.json"
+
+
+def get_adjustments_path() -> Path:
+    """Return the configured holiday-adjustments file path.
+
+    Relative paths from ``ADJUSTMENTS_PATH`` are resolved from the project root,
+    rather than from the process working directory. This keeps CLI, container,
+    editable-install, and service-manager launches consistent.
+    """
+    configured_path = os.getenv("ADJUSTMENTS_PATH")
+    if not configured_path:
+        return PROJECT_ROOT / "adjustments.json"
+
+    path = Path(configured_path).expanduser()
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    return path.resolve()
 
 
 @lru_cache(maxsize=1)

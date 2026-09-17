@@ -1,7 +1,15 @@
-import json
-import os
+import logging
 from datetime import datetime
+
+from app.core.config import get_adjustments_path
+from app.provider.adjustments_config import (
+    AdjustmentsConfigError,
+    load_adjustments_config,
+)
 from app.schemas.schemas import ScheduleSchema
+
+
+logger = logging.getLogger(__name__)
 
 
 def apply_holiday_adjustments(schedule: ScheduleSchema) -> ScheduleSchema:
@@ -12,19 +20,15 @@ def apply_holiday_adjustments(schedule: ScheduleSchema) -> ScheduleSchema:
        表示 5月9日（目标）上 5月4日（源）的课。
        目标日期的原有课程会被移除，源日期的课程会复制到目标日期，且类型改为“调休”。
     """
-    # 允许从环境变量或当前目录读取
-    base_path = os.getcwd()
-    adjust_file = os.path.join(base_path, "adjustments.json")
-
-    if not os.path.exists(adjust_file):
-        return schedule
+    adjust_file = get_adjustments_path()
 
     try:
-        with open(adjust_file, "r", encoding="utf-8") as f:
-            adjustments = json.load(f)
-    except Exception as e:
-        # 可以考虑使用 logging
-        print(f"Error loading adjustments.json: {e}")
+        adjustments = load_adjustments_config(adjust_file)
+    except FileNotFoundError:
+        logger.warning("Adjustments file does not exist: %s", adjust_file)
+        return schedule
+    except AdjustmentsConfigError:
+        logger.exception("Failed to load adjustments file: %s", adjust_file)
         return schedule
 
     all_suspend_dates = set()
