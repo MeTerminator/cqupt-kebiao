@@ -66,12 +66,19 @@ async def _request_and_cache_current(student_id: str) -> Tuple[str, str, str, da
         request_jwzx_ksap(student_id),
         request_jwzx_ksapBk(student_id),
     )
-    student_name, academic_year, semester = extract_schedule_metadata(kebiao_html)
+    student_name, academic_year, semester = extract_schedule_metadata(
+        kebiao_html, student_id
+    )
     if student_name is None:
         raise JwzxError("无法从本学期课表中识别学生姓名，拒绝入库。")
     if academic_year is None or semester is None:
         raise JwzxError("无法从本学期课表中识别学年学期，拒绝入库。")
     fetched_at = datetime.now(timezone.utc)
+    data = parse_all_data(
+        _as_local_naive(fetched_at), kebiao_html, ksap_html, ksapbk_html
+    )
+    if data is None or data.student_id != student_id.upper():
+        raise JwzxError("本学期课表数据无效，拒绝入库。")
     await database.save_current_cache(
         student_id=student_id,
         academic_year=academic_year,
@@ -90,12 +97,15 @@ async def _request_and_cache_current(student_id: str) -> Tuple[str, str, str, da
 async def _request_and_cache_next(student_id: str) -> Tuple[str, datetime]:
     """请求下学期公示课表并写入 PostgreSQL。"""
     html = await request_jwzx_next_kebiao(student_id)
-    student_name, academic_year, semester = extract_schedule_metadata(html)
+    student_name, academic_year, semester = extract_schedule_metadata(html, student_id)
     if student_name is None:
         raise JwzxError("无法从下学期课表中识别学生姓名，拒绝入库。")
     if academic_year is None or semester is None:
         raise JwzxError("无法从下学期课表中识别学年学期，拒绝入库。")
     fetched_at = datetime.now(timezone.utc)
+    data = parse_next_data(html)
+    if data.student_id != student_id.upper():
+        raise JwzxError("下学期课表学号与请求学号不一致，拒绝入库。")
     await database.save_next_cache(
         student_id=student_id,
         academic_year=academic_year,
@@ -183,15 +193,14 @@ async def get_curriculum_data(
     cache = await database.get_latest_current_cache(student_id)
     current_fields = ("kebiao_html", "ksap_html", "ksapbk_html")
 
-    if cache and all(cache.get(field) for field in current_fields):
-        timestamps = (
-            cache.get("kebiao_fetched_at"),
-            cache.get("ksap_fetched_at"),
-            cache.get("ksapbk_fetched_at"),
+    if (
+        cache
+        and all(cache.get(field) for field in current_fields)
+        and all(
+            value is not None
+            for value in extract_schedule_metadata(cache["kebiao_html"], student_id)
         )
-        if any(_is_stale(value) for value in timestamps):
-            background_tasks.add_task(update_current_cache, student_id)
-
+    ):
         data = parse_all_data(
             _as_local_naive(cache.get("kebiao_fetched_at")),
             cache["kebiao_html"],
@@ -199,7 +208,15 @@ async def get_curriculum_data(
             cache["ksapbk_html"],
         )
 
-        return _with_updated_at(data, cache.get("kebiao_fetched_at"))
+        if data is not None and data.student_id == student_id.upper():
+            timestamps = (
+                cache.get("kebiao_fetched_at"),
+                cache.get("ksap_fetched_at"),
+                cache.get("ksapbk_fetched_at"),
+            )
+            if any(_is_stale(value) for value in timestamps):
+                background_tasks.add_task(update_current_cache, student_id)
+            return _with_updated_at(data, cache.get("kebiao_fetched_at"))
 
     kb_html, ks_html, bk_html, fetched_at = await _request_and_cache_current(student_id)
     data = parse_all_data(
@@ -216,7 +233,14 @@ async def get_next_curriculum_data(
     student_id: str, background_tasks: BackgroundTasks
 ) -> ScheduleSchema:
     cache = await database.get_latest_next_cache(student_id)
-    if cache and cache.get("next_kebiao_html"):
+    if (
+        cache
+        and cache.get("next_kebiao_html")
+        and all(
+            value is not None
+            for value in extract_schedule_metadata(cache["next_kebiao_html"], student_id)
+        )
+    ):
         if _is_stale(cache.get("next_kebiao_fetched_at")):
             background_tasks.add_task(update_next_cache, student_id)
         data = parse_next_data(cache["next_kebiao_html"])

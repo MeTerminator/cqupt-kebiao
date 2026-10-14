@@ -13,17 +13,35 @@ from app.exceptions.JwzxError import JwzxError
 # http://jwzx.cqupt.edu.cn/kebiao/kb_stu.php?xh=<学号>
 
 
+def _extract_student_identity(soup: BeautifulSoup) -> Optional[Tuple[str, str]]:
+    """仅在页头的学生信息项内匹配，避免把相邻的周次提示当作姓名。"""
+    head = soup.find("div", id="head")
+    if head is None:
+        return None
+    for item in head.find_all("li"):
+        match = re.search(
+            r"(?<![\w])([Ll\d]\d{9})\s*([\u4e00-\u9fff]+)\s*$",
+            item.get_text(" ", strip=True),
+        )
+        if match:
+            return match.group(1).upper(), match.group(2)
+    return None
+
+
 def extract_schedule_metadata(
     html_content: str,
+    expected_student_id: Optional[str] = None,
 ) -> Tuple[Optional[str], Optional[str], Optional[int]]:
     """从教务在线课表页提取姓名、学年和学期。"""
     soup = BeautifulSoup(html_content, "html.parser")
     head = soup.find("div", id="head")
-    text = head.get_text(" ", strip=True) if head else soup.get_text(" ", strip=True)
-    student_match = re.search(r"[Ll\d]\d{9}\s*([\u4e00-\u9fff]+)", text)
+    text = head.get_text(" ", strip=True) if head else ""
+    identity = _extract_student_identity(soup)
+    if identity and expected_student_id and identity[0] != expected_student_id.upper():
+        identity = None
     term_match = re.search(r"(\d{4}-\d{4})学年(\d)学期", text)
     return (
-        student_match.group(1) if student_match else None,
+        identity[1] if identity else None,
         term_match.group(1) if term_match else None,
         int(term_match.group(2)) if term_match else None,
     )
@@ -179,6 +197,7 @@ def parse_jwzx_kebiao(
     html_content,
     request_at: Optional[datetime] = None,
     week_1_monday: Optional[datetime] = None,
+    expected_student_id: Optional[str] = None,
 ) -> ScheduleSchema:
     soup = BeautifulSoup(html_content, "html.parser")
 
@@ -199,11 +218,14 @@ def parse_jwzx_kebiao(
     semester = term_match.group(2) if term_match else "未知学期"
 
     # 学号、姓名在当前课表页和下学期公示页中都位于页头。
-    stu_match = re.search(r"([Ll\d]\d{9})\s*([\u4e00-\u9fff]+)", head_text)
-    if not stu_match:
+    identity = _extract_student_identity(soup)
+    if not identity:
         raise JwzxError("无法从课表页读取学生姓名，该页面不是有效课表。")
-    student_id = stu_match.group(1).upper()
-    student_name = stu_match.group(2)
+    student_id, student_name = identity
+    if expected_student_id and student_id != expected_student_id.upper():
+        raise JwzxError("课表学号与请求学号不一致，拒绝使用该数据。")
+    if not term_match:
+        raise JwzxError("无法从课表页读取学年学期，该页面不是有效课表。")
 
     info = re.search(r"今天是第\s*(\d+)\s*周\s*星期\s*(\d+)", head_text)
     if week_1_monday is None and info:
