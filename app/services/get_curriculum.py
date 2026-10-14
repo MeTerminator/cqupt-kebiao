@@ -38,7 +38,9 @@ def _is_stale(fetched_at: Optional[datetime]) -> bool:
         return True
     if fetched_at.tzinfo is None:
         fetched_at = fetched_at.replace(tzinfo=timezone.utc)
-    return (datetime.now(timezone.utc) - fetched_at).total_seconds() > CACHE_MAX_AGE_SECONDS
+    return (
+        datetime.now(timezone.utc) - fetched_at
+    ).total_seconds() > CACHE_MAX_AGE_SECONDS
 
 
 def _with_updated_at(
@@ -70,15 +72,15 @@ async def _request_and_cache_current(student_id: str) -> Tuple[str, str, str, da
         kebiao_html, student_id
     )
     if student_name is None:
-        raise JwzxError("无法从本学期课表中识别学生姓名，拒绝入库。")
+        raise JwzxError("无法从本学期课表中识别学生姓名")
     if academic_year is None or semester is None:
-        raise JwzxError("无法从本学期课表中识别学年学期，拒绝入库。")
+        raise JwzxError("无法从本学期课表中识别学年学期")
     fetched_at = datetime.now(timezone.utc)
     data = parse_all_data(
         _as_local_naive(fetched_at), kebiao_html, ksap_html, ksapbk_html
     )
     if data is None or data.student_id != student_id.upper():
-        raise JwzxError("本学期课表数据无效，拒绝入库。")
+        raise JwzxError("本学期课表数据无效")
     await database.save_current_cache(
         student_id=student_id,
         academic_year=academic_year,
@@ -99,13 +101,13 @@ async def _request_and_cache_next(student_id: str) -> Tuple[str, datetime]:
     html = await request_jwzx_next_kebiao(student_id)
     student_name, academic_year, semester = extract_schedule_metadata(html, student_id)
     if student_name is None:
-        raise JwzxError("无法从下学期课表中识别学生姓名，拒绝入库。")
+        raise JwzxError("无法从下学期课表中识别学生姓名")
     if academic_year is None or semester is None:
-        raise JwzxError("无法从下学期课表中识别学年学期，拒绝入库。")
+        raise JwzxError("无法从下学期课表中识别学年学期")
     fetched_at = datetime.now(timezone.utc)
     data = parse_next_data(html)
     if data.student_id != student_id.upper():
-        raise JwzxError("下学期课表学号与请求学号不一致，拒绝入库。")
+        raise JwzxError("下学期课表学号与请求学号不一致")
     await database.save_next_cache(
         student_id=student_id,
         academic_year=academic_year,
@@ -238,7 +240,9 @@ async def get_next_curriculum_data(
         and cache.get("next_kebiao_html")
         and all(
             value is not None
-            for value in extract_schedule_metadata(cache["next_kebiao_html"], student_id)
+            for value in extract_schedule_metadata(
+                cache["next_kebiao_html"], student_id
+            )
         )
     ):
         if _is_stale(cache.get("next_kebiao_fetched_at")):
