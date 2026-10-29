@@ -7,7 +7,7 @@ from typing import Dict, Optional
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
 }
-BASE_URL = "http://jwzx.cqupt.edu.cn"
+BASE_URL = "https://jwzx.cqupt.edu.cn"
 # Reuse Uvicorn's configured error logger so records are visible with its
 # default `uvicorn main:app ...` command.
 logger = logging.getLogger("uvicorn.error")
@@ -28,6 +28,7 @@ async def _fetch_jwzx(path: str, params: Optional[Dict[str, str]] = None) -> str
             timeout=10,
             base_url=BASE_URL,
             proxy=proxy,
+            follow_redirects=True,
         ) as client:
             response = await client.get(path, params=params)
             response.raise_for_status()

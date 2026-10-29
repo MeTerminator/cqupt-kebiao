@@ -10,7 +10,7 @@ from app.exceptions.JwzxError import JwzxError
 
 
 # 课表 HTML 来源
-# http://jwzx.cqupt.edu.cn/kebiao/kb_stu.php?xh=<学号>
+# https://jwzx.cqupt.edu.cn/kebiao/kb_stu.php?xh=<学号>
 
 
 def _extract_student_identity(soup: BeautifulSoup) -> Optional[Tuple[str, str]]:
